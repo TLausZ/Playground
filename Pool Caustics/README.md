@@ -5,6 +5,8 @@ that drift across the surface of a swimming pool: thin cyan loops on deep blue,
 shifting quickly while the background colors wander. Open it in a browser; no
 dependencies, nothing to build.
 
+![The visualizer running, with the control panel open](screenshot.jpg)
+
 Inspired by a post from Peter Todd:
 <https://primal.net/e/nevent1qvzqqqqqqypzpn92tr3hexwgt0z7w4qz3fcch4ryshja8jeng453aj4c83646jxvqqs29tzjn5xpsrprp2kegk55n2c4zprh2wzdtqrxqffas7thx20l45g3xhz4n>
 

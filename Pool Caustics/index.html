@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#4a32e0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Pool Caustics</title>
+<style>
+  :root {
+    --ui-bg: rgba(12, 8, 46, 0.62);
+    --ui-border: rgba(150, 220, 255, 0.22);
+    --ui-text: rgba(214, 246, 255, 0.94);
+    --ui-accent: #6ff2ff;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: #2a1c9a; overflow: hidden; overscroll-behavior: none;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas#c {
+    position: fixed; inset: 0; display: block; width: 100%; height: 100%;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+
+  #toggle {
+    position: fixed; z-index: 12;
+    top: calc(14px + var(--safe-t)); left: 14px;
+    width: 42px; height: 42px; border-radius: 12px;
+    display: grid; place-items: center; font-size: 17px; line-height: 1;
+    color: var(--ui-text); background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    cursor: pointer;
+  }
+
+  #panel {
+    position: fixed; z-index: 11;
+    top: calc(66px + var(--safe-t)); left: 14px;
+    width: 268px; max-width: calc(100vw - 28px);
+    max-height: calc(100vh - 90px - var(--safe-t) - var(--safe-b));
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 14px 16px calc(14px + var(--safe-b));
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 16px;
+    -webkit-backdrop-filter: blur(16px) saturate(1.3);
+    backdrop-filter: blur(16px) saturate(1.3);
+    color: var(--ui-text); font-size: 12.5px;
+    box-shadow: 0 12px 44px rgba(0,0,0,.4);
+    transition: opacity .22s ease, transform .22s ease;
+  }
+  #panel[hidden] { display: block; opacity: 0; transform: translateY(-10px) scale(.98); pointer-events: none; }
+
+  #panel h1 {
+    margin: 0 0 3px; font-size: 12px; font-weight: 650; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ui-accent);
+  }
+  #panel .sub { margin: 0 0 11px; opacity: .5; font-size: 11px; line-height: 1.45; }
+
+  .row { margin-bottom: 9px; }
+  .row label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 3px;
+  }
+  .row label .val { opacity: .55; font-variant-numeric: tabular-nums; font-size: 11px; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; display: block;
+    width: 100%; height: 22px; background: transparent; outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 3px; background: rgba(150,220,255,.24);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; margin-top: -8px;
+    width: 18px; height: 18px; border-radius: 50%; border: none;
+    background: var(--ui-accent); box-shadow: 0 0 10px rgba(111,242,255,.7);
+  }
+  input[type=range]::-moz-range-track { height: 3px; border-radius: 3px; background: rgba(150,220,255,.24); }
+  input[type=range]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%; border: none;
+    background: var(--ui-accent); box-shadow: 0 0 10px rgba(111,242,255,.7);
+  }
+
+  #toggle:focus-visible, button.b:focus-visible, input[type=range]:focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 2px;
+  }
+
+  .buttons { display: flex; gap: 6px; margin-bottom: 13px; flex-wrap: wrap; }
+  button.b {
+    flex: 1 1 30%; padding: 10px 6px; font: inherit; font-size: 11.5px;
+    color: var(--ui-text); background: rgba(120,200,255,.10);
+    border: 1px solid var(--ui-border); border-radius: 10px; cursor: pointer;
+  }
+  button.b:active { background: rgba(120,200,255,.26); }
+
+  #values {
+    display: block; width: 100%; margin: -6px 0 13px; padding: 8px 9px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px; line-height: 1.5; color: var(--ui-text);
+    background: rgba(6, 3, 30, .55); border: 1px solid var(--ui-border);
+    border-radius: 8px; resize: vertical;
+  }
+  #values[hidden] { display: none; }
+  #values:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+
+  #stats {
+    margin-top: 10px; font-size: 10.5px; opacity: .38;
+    font-variant-numeric: tabular-nums; letter-spacing: .04em;
+  }
+
+  #hint {
+    position: fixed; z-index: 10; left: 50%; transform: translateX(-50%);
+    bottom: calc(16px + var(--safe-b));
+    color: rgba(210,240,255,.4); font-size: 11px; letter-spacing: .05em;
+    pointer-events: none; text-align: center; transition: opacity .8s ease;
+  }
+  #hint.fade { opacity: 0; }
+
+  @media (max-width: 680px), (max-height: 520px) {
+    #toggle { top: auto; bottom: calc(14px + var(--safe-b)); left: 14px; }
+    #panel {
+      top: auto; left: 10px; right: 10px; width: auto;
+      bottom: calc(66px + var(--safe-b));
+      max-height: 62vh;
+    }
+    #panel[hidden] { transform: translateY(10px) scale(.98); }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<button id="toggle" aria-label="Settings">☰</button>
+
+<div id="panel" hidden>
+  <h1>Caustics</h1>
+  <p class="sub">Light reflections on water — contour lines of a wave field. Fast waves, slowly drifting colors.</p>
+
+  <div class="buttons">
+    <button class="b" id="btn-pause">Pause</button>
+    <button class="b" id="btn-reset">Reset</button>
+    <button class="b" id="btn-full">Fullscreen</button>
+    <button class="b" id="btn-copy">Copy values</button>
+  </div>
+
+  <textarea id="values" readonly hidden rows="4"
+            aria-label="Current settings as JSON"></textarea>
+
+  <div class="row">
+    <label>Wave speed <span class="val" id="v-speed"></span></label>
+    <input type="range" id="speed" min="0" max="3" step="0.01" value="0.88">
+  </div>
+  <div class="row">
+    <label>Wave scale <span class="val" id="v-density"></span></label>
+    <input type="range" id="density" min="0.35" max="2.5" step="0.01" value="0.56">
+  </div>
+  <div class="row">
+    <label>Line density <span class="val" id="v-lines"></span></label>
+    <input type="range" id="lines" min="0" max="1" step="0.005" value="0.31">
+  </div>
+  <div class="row">
+    <label>Line width <span class="val" id="v-width"></span></label>
+    <input type="range" id="width" min="0.3" max="3" step="0.01" value="2.02">
+  </div>
+  <div class="row">
+    <label>Fill <span class="val" id="v-blob"></span></label>
+    <input type="range" id="blob" min="0" max="2.5" step="0.01" value="0.82">
+  </div>
+  <div class="row">
+    <label>Glow <span class="val" id="v-glow"></span></label>
+    <input type="range" id="glow" min="0" max="2" step="0.01" value="1.69">
+  </div>
+  <div class="row">
+    <label>Color drift <span class="val" id="v-hue"></span></label>
+    <input type="range" id="hue" min="0" max="20" step="0.05" value="6">
+  </div>
+  <div class="row">
+    <label>Roundness <span class="val" id="v-round"></span></label>
+    <input type="range" id="round" min="0" max="1" step="0.005" value="0.7">
+  </div>
+  <div class="row">
+    <label>Stretch <span class="val" id="v-stretch"></span></label>
+    <input type="range" id="stretch" min="0" max="1" step="0.005" value="0.455">
+  </div>
+  <div class="row">
+    <label>Light band <span class="val" id="v-band"></span></label>
+    <input type="range" id="band" min="0" max="1" step="0.005" value="0.105">
+  </div>
+  <div class="row">
+    <label>Edge falloff <span class="val" id="v-edge"></span></label>
+    <input type="range" id="edge" min="0" max="1" step="0.005" value="0">
+  </div>
+  <div class="row">
+    <label>Tilt <span class="val" id="v-tilt"></span></label>
+    <input type="range" id="tilt" min="-25" max="25" step="0.1" value="12">
+  </div>
+  <div class="row">
+    <label>Perspective <span class="val" id="v-persp"></span></label>
+    <input type="range" id="persp" min="0" max="1" step="0.01" value="0.79">
+  </div>
+
+  <div id="stats"></div>
+</div>
+
+<div id="hint">Mouse / touch = light source · H = panel · Space = pause</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+
+  // =========================================================================
+  //  Parameters
+  // =========================================================================
+  var DEFAULTS = {
+    speed: 0.88, density: 0.56, lines: 0.31, width: 2.02, blob: 0.82,
+    glow: 1.69, hue: 6, round: 0.7, stretch: 0.455, band: 0.105,
+    edge: 0, tilt: 12, persp: 0.79
+  };
+  var P = {};
+  for (var key in DEFAULTS) P[key] = DEFAULTS[key];
+
+  // Contour levels are derived each frame from the field's mean and spread,
+  // which keeps the amount of visible line stable at any setting.
+  var LEVELS = [0, 0, 0, 0, 0];
+  var fMean = 0, fStd = 1;
+
+  // ---- fast sine approximation (max error ~0.001) ---------------------
+  var TAU = 6.283185307179586, INV_TAU = 1 / TAU, HALF_PI = 1.5707963267948966;
+  function fsin(x) {
+    x -= TAU * (x >= 0 ? ((x * INV_TAU + 0.5) | 0) : -(((-x) * INV_TAU + 0.5) | 0));
+    var y = 1.2732395447351628 * x - 0.4052847345693511 * x * (x < 0 ? -x : x);
+    return 0.225 * (y * (y < 0 ? -y : y) - y) + y;
+  }
+  function fcos(x) { return fsin(x + HALF_PI); }
+
+  // =========================================================================
+  //  Wave spectrum: sum of directional sine waves (deep-water dispersion)
+  // =========================================================================
+  var waves = [];
+  function buildWaves(seed) {
+    var s = seed >>> 0;
+    function rnd() { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }
+
+    waves.length = 0;
+    var main = -0.3;                 // dominant swell direction
+    var N = 19, ampSum = 0;
+    for (var i = 0; i < N; i++) {
+      var spread = (i < 12) ? 1.05 : 2.9;                  // a few cross waves
+      var ang = main + (rnd() * 2 - 1) * spread;
+      var f = 1.15 * Math.pow(1.55, i % 9) * (0.8 + 0.4 * rnd());
+      var amp = 1 / Math.pow(f, 0.73);
+      ampSum += amp;
+      waves.push({
+        kx: Math.cos(ang) * f,
+        ky: Math.sin(ang) * f,
+        a: amp,
+        w: Math.sqrt(f) * 1.55 * (rnd() < 0.5 ? 1 : -1),  // ω ≈ √(g·k)
+        ph: rnd() * 6.283185
+      });
+    }
+    for (var j = 0; j < waves.length; j++) waves[j].a /= ampSum;
+  }
+  buildWaves(20260815);
+
+  // Flat arrays: much faster than property access in the inner loop
+  var wKX, wKY, wA, wPH;
+  function packWaves(t) {
+    var n = waves.length;
+    if (!wKX || wKX.length !== n) {
+      wKX = new Float64Array(n); wKY = new Float64Array(n);
+      wA = new Float64Array(n);  wPH = new Float64Array(n);
+    }
+    for (var i = 0; i < n; i++) {
+      wKX[i] = waves[i].kx; wKY[i] = waves[i].ky;
+      wA[i] = waves[i].a;   wPH[i] = waves[i].ph + t * waves[i].w;   // phase for this frame
+    }
+  }
+
+  // Wave height at world position (x, y) at time t
+  function height(x, y, t) {
+    // Domain warping -> organic closed loops instead of stripes
+    var wx = fsin(x * 0.82 + t * 0.47) * fcos(y * 0.71 - t * 0.34);
+    var wy = fcos(x * 0.63 - t * 0.39) * fsin(y * 0.88 + t * 0.26);
+    var px = x + wx * 0.62;
+    var py = y + wy * 0.62;
+
+    var h = 0;
+    for (var i = 0, n = wKX.length; i < n; i++) {
+      h += wA[i] * fsin(px * wKX[i] + py * wKY[i] + wPH[i]);
+    }
+    return h * 2.6;
+  }
+
+  // =========================================================================
+  //  Perspective grid
+  // =========================================================================
+  // VW/VH = visible viewport, W/H = logical drawing surface. With the scene
+  // tilted the latter is a little larger so no corners are missing.
+  var VW = 0, VH = 0, W = 0, H = 0, dpr = 1, ROT = 0;
+  var cellPx = 7;                  // target cell size in CSS pixels (quality step)
+  var COLS = 0, ROWS = 0;
+  var xs = null, ys = null, dep = null, field = null;
+  var horizonY = 0, camC = 1, dFar = 1, yTop = 0;
+  var worldSX = 8, worldSY = 12;
+  // Stretch axis: negative angle runs top-left to bottom-right
+  var STRETCH_ANGLE = -0.42, stAC = Math.cos(STRETCH_ANGLE), stAS = Math.sin(STRETCH_ANGLE);
+
+  function buildGrid() {
+    COLS = Math.max(20, Math.min(220, Math.round(W / cellPx)));
+    ROWS = Math.max(16, Math.min(180, Math.round(H / cellPx)));
+
+    xs = new Float32Array(COLS + 1);
+    ys = new Float32Array(ROWS + 1);
+    dep = new Float32Array(ROWS + 1);
+    field = new Float32Array((COLS + 1) * (ROWS + 1));
+    fieldTmp = new Float32Array((COLS + 1) * (ROWS + 1));
+    lab = new Int32Array(COLS * ROWS);
+
+    // persp = 1: grazing view across the water · persp = 0: near top-down
+    horizonY = H * 0.16 - (1 - P.persp) * H * 1.7;
+    camC = H - horizonY;
+    dFar = 1 + 2.7 * P.persp;
+    // Key the world scale to the geometric mean of the viewport so portrait
+    // and landscape show equally sized reflections. The base mapping is
+    // isotropic; the stretch is applied below as a rotatable axis.
+    worldSX = 15.1 * H / Math.sqrt(W * H);
+    worldSY = worldSX * camC / H;
+
+    for (var i = 0; i <= COLS; i++) xs[i] = (i / COLS) * W;
+
+    var lf = Math.log(dFar);
+    for (var j = 0; j <= ROWS; j++) {
+      var u = j / ROWS;                     // 0 = top (far), 1 = bottom (near)
+      var d = Math.exp(lf * (1 - u));       // dFar -> 1
+      dep[j] = d;
+      ys[j] = horizonY + camC / d;
+    }
+    yTop = ys[0];
+  }
+
+  // =========================================================================
+  //  Evaluate the field
+  // =========================================================================
+  var mouse = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 };
+
+  function computeField(t) {
+    var dens = P.density;
+    var halfW = W * 0.5;
+
+    for (var j = rowLo; j <= rowHi; j++) {
+      var idx = j * (COLS + 1);
+      var d = dep[j];
+      // World coordinates: scale grows linearly with depth (perspective)
+      var sx = d * worldSX * dens / H;      // world x per screen pixel
+      var wy = d * worldSY * dens - t * 0.45;
+      var stepX = (W / COLS) * sx;
+      var wx = -halfW * sx;
+      // area preserving: compress along the axis, expand across it
+      var st = Math.sqrt(0.85 + 3.6 * P.stretch);
+      var sA = 1 / st, sB = st;
+      for (var i = 0; i <= COLS; i++, idx++) {
+        // Project onto the rotated axis, compress along it, rotate back:
+        // this is what stretches the reflections along that axis.
+        var pa = (wx * stAC + wy * stAS) * sA;
+        var pb = (-wx * stAS + wy * stAC) * sB;
+        var v = height(pa * stAC - pb * stAS, pa * stAS + pb * stAC, t);
+        field[idx] = v;
+        wx += stepX;
+      }
+    }
+
+  }
+
+  // Smoothing the field before extracting contours is what makes the shapes
+  // round: a separable 1-2-1 blur takes the high-frequency jitter out of the
+  // wave sum, so the level sets curve instead of zigzagging.
+  var fieldTmp = null;
+  function smoothField(amount) {
+    if (amount <= 0.001 || rowHi <= rowLo) return;
+    var stride = COLS + 1;
+    var passes = amount > 0.55 ? 2 : 1;
+    var w = amount > 0.55 ? (amount - 0.55) / 0.45 * 0.5 + 0.5 : amount / 0.55;
+    var c0 = 1 - w, c1 = w;
+
+    for (var pass = 0; pass < passes; pass++) {
+      var mix = (pass === 1) ? c1 : (passes === 2 ? 1 : c1);
+      var keep = 1 - mix;
+
+      // horizontal
+      for (var j = rowLo; j <= rowHi; j++) {
+        var base = j * stride;
+        var prev = field[base];
+        for (var i = 0; i <= COLS; i++) {
+          var cur = field[base + i];
+          var nxt = field[base + (i < COLS ? i + 1 : COLS)];
+          fieldTmp[base + i] = keep * cur + mix * (prev * 0.25 + cur * 0.5 + nxt * 0.25);
+          prev = cur;
+        }
+      }
+      // vertical
+      for (var jj = rowLo; jj <= rowHi; jj++) {
+        var b0 = jj * stride;
+        var bU = (jj > rowLo ? jj - 1 : rowLo) * stride;
+        var bD = (jj < rowHi ? jj + 1 : rowHi) * stride;
+        for (var ii = 0; ii <= COLS; ii++) {
+          var cc = fieldTmp[b0 + ii];
+          field[b0 + ii] = keep * cc +
+            mix * (fieldTmp[bU + ii] * 0.25 + cc * 0.5 + fieldTmp[bD + ii] * 0.25);
+        }
+      }
+    }
+  }
+
+  // Mean and spread of the visible field; the contour levels ride on these.
+  function fieldStats() {
+    var stride = COLS + 1;
+    var sum = 0, sumSq = 0, count = 0;
+    for (var j = rowLo; j <= rowHi; j++) {
+      var base = j * stride;
+      for (var i = 0; i <= COLS; i++) {
+        var v = field[base + i];
+        sum += v; sumSq += v * v; count++;
+      }
+    }
+    var n = count || 1;
+    fMean = sum / n;
+    var varc = sumSq / n - fMean * fMean;
+    fStd = Math.sqrt(varc > 1e-9 ? varc : 1e-9);
+  }
+
+  // =========================================================================
+  //  Marching squares with variable line width
+  //  Width ~ 1/|grad h|  ->  thin lines on steep slopes,
+  //                          filled areas where the field is flat.
+  // =========================================================================
+  var NB = 7;                       // width classes
+  var bucket = [], bucketN = new Int32Array(NB), bucketW = new Float32Array(NB);
+  for (var bi = 0; bi < NB; bi++) bucket.push(new Float32Array(24000));
+
+  var W_MIN = 0.9, W_MAX = 15;      // in CSS pixels
+
+  function pushSeg(b, x1, y1, x2, y2) {
+    var n = bucketN[b];
+    if (n + 4 > bucket[b].length) return;
+    var arr = bucket[b];
+    arr[n] = x1; arr[n + 1] = y1; arr[n + 2] = x2; arr[n + 3] = y2;
+    bucketN[b] = n + 4;
+  }
+
+  var logSpan = Math.log(W_MAX / W_MIN);
+
+  // Connected components of the contour cells: one label per reflection.
+  var MAX_LAB = 30000;
+  var lab = null;                                  // label per grid cell
+  var uf = new Int32Array(MAX_LAB);                // union-find parents
+  var cyMin = new Float32Array(MAX_LAB), cyMax = new Float32Array(MAX_LAB);
+  var cxMin = new Float32Array(MAX_LAB), cxMax = new Float32Array(MAX_LAB);
+  var cClip = new Uint8Array(MAX_LAB);             // touches the evaluated edge
+  var cShow = new Uint8Array(MAX_LAB);
+
+  function ufFind(x) {
+    var r = x;
+    while (uf[r] !== r) r = uf[r];
+    while (uf[x] !== r) { var nx = uf[x]; uf[x] = r; x = nx; }
+    return r;
+  }
+  function ufUnite(a, b) {
+    if (a === b) return a;
+    if (b < a) { var t = a; a = b; b = t; }        // keep the lower index as root
+    uf[b] = a;
+    if (cyMin[b] < cyMin[a]) cyMin[a] = cyMin[b];
+    if (cyMax[b] > cyMax[a]) cyMax[a] = cyMax[b];
+    if (cxMin[b] < cxMin[a]) cxMin[a] = cxMin[b];
+    if (cxMax[b] > cxMax[a]) cxMax[a] = cxMax[b];
+    cClip[a] |= cClip[b];
+    return a;
+  }
+
+  // The lit band. A reflection is shown or hidden as a whole — never sliced
+  // through — so the decision is made per connected contour, not per cell.
+  var bandTop = 0, bandBot = 0, bandFadeLen = 1, rowLo = 0, rowHi = 0;
+  function bandEdges() {
+    var half = H * (0.12 + 0.26 * P.band);
+    return [H * 0.55 - half, H * 0.55 + half * 0.78];
+  }
+  function updateBand() {
+    var e = bandEdges();
+    bandTop = e[0]; bandBot = e[1];
+    bandFadeLen = Math.max(0.5, H * 0.3 * P.edge);
+
+    // The field is evaluated across the band plus a margin, so a reflection
+    // sitting near the edge is still known in full and can be drawn whole.
+    var yA = bandTop - bandFadeLen - H * 0.5;
+    var yB = bandBot + bandFadeLen + H * 0.5;
+    rowLo = ROWS; rowHi = 0;
+    for (var j = 0; j <= ROWS; j++) {
+      if (ys[j] >= yA && ys[j] <= yB) {
+        if (j < rowLo) rowLo = j;
+        if (j > rowHi) rowHi = j;
+      }
+    }
+    rowLo = Math.max(0, rowLo - 1);
+    rowHi = Math.min(ROWS, rowHi + 1);
+    if (rowHi < rowLo) { rowLo = 0; rowHi = -1; }
+  }
+  function bandFade(y) {
+    var f = 1;
+    if (y < bandTop) f = 1 - (bandTop - y) / bandFadeLen;
+    else if (y > bandBot) f = 1 - (y - bandBot) / bandFadeLen;
+    if (f <= 0) return 0;
+    if (f >= 1) return 1;
+    return f * f * (3 - 2 * f);
+  }
+  function cellHash(i, j) {
+    var h = (i * 374761393 + j * 668265263) | 0;
+    h = (h ^ (h >>> 13)) * 1274126177 | 0;
+    return ((h ^ (h >>> 16)) >>> 8) / 16777216;
+  }
+
+  function contour(L, eps) {
+    if (rowHi <= rowLo) return;
+    var stride = COLS + 1;
+    var i, j, a, b, c, d, code, ci, l, r;
+
+    // ---- pass 1: group neighbouring contour cells into whole reflections --
+    var nLab = 0;
+    for (j = rowLo; j < rowHi; j++) {
+      var r0 = j * stride, r1 = r0 + stride;
+      var rowBase = j * COLS;
+      var ym = (ys[j] + ys[j + 1]) * 0.5;
+      var atEdge = (j === rowLo && rowLo > 0) || (j === rowHi - 1 && rowHi < ROWS);
+
+      for (i = 0; i < COLS; i++) {
+        ci = rowBase + i;
+        a = field[r0 + i];     b = field[r0 + i + 1];
+        c = field[r1 + i + 1]; d = field[r1 + i];
+
+        code = 0;
+        if (a > L) code |= 8;
+        if (b > L) code |= 4;
+        if (c > L) code |= 2;
+        if (d > L) code |= 1;
+        if (code === 0 || code === 15) { lab[ci] = -1; continue; }
+
+        l = -1;
+        if (i > 0) { var ln = lab[ci - 1]; if (ln >= 0) l = ufFind(ln); }
+        if (j > rowLo) {
+          var un = lab[ci - COLS];
+          if (un >= 0) { var u = ufFind(un); l = (l < 0) ? u : ufUnite(l, u); }
+        }
+        if (l < 0) {
+          if (nLab >= MAX_LAB) { lab[ci] = -1; continue; }
+          l = nLab++;
+          uf[l] = l;
+          cyMin[l] = ym; cyMax[l] = ym;
+          cxMin[l] = xs[i]; cxMax[l] = xs[i + 1];
+          cClip[l] = 0;
+        }
+        lab[ci] = l;
+
+        r = ufFind(l);
+        if (ym < cyMin[r]) cyMin[r] = ym;
+        if (ym > cyMax[r]) cyMax[r] = ym;
+        if (xs[i] < cxMin[r]) cxMin[r] = xs[i];
+        if (xs[i + 1] > cxMax[r]) cxMax[r] = xs[i + 1];
+        if (atEdge) cClip[r] = 1;
+      }
+    }
+
+    // ---- decide per reflection: shown whole, or not at all ----------------
+    for (l = 0; l < nLab; l++) {
+      if (ufFind(l) !== l) continue;
+      if (cClip[l]) { cShow[l] = 0; continue; }     // form is not fully known
+      var fade = bandFade((cyMin[l] + cyMax[l]) * 0.5);
+      if (fade >= 1) cShow[l] = 1;
+      else if (fade <= 0) cShow[l] = 0;
+      else {
+        // Soft edge: thin out whole reflections, keyed to where they sit so
+        // the choice does not flicker while they drift.
+        var hx = (cxMin[l] + cxMax[l]) * 0.5 / 40;
+        var hy = (cyMin[l] + cyMax[l]) * 0.5 / 40;
+        cShow[l] = cellHash(hx | 0, hy | 0) < fade ? 1 : 0;
+      }
+    }
+
+    // ---- pass 2: emit the segments of the reflections that are shown ------
+    for (j = rowLo; j < rowHi; j++) {
+      var y0 = ys[j], y1 = ys[j + 1];
+      var dy = y1 - y0;
+      var invDy = 1 / dy;
+      var q0 = j * stride, q1 = q0 + stride;
+      var qBase = j * COLS;
+
+      for (i = 0; i < COLS; i++) {
+        l = lab[qBase + i];
+        if (l < 0 || !cShow[ufFind(l)]) continue;
+
+        a = field[q0 + i];     b = field[q0 + i + 1];
+        c = field[q1 + i + 1]; d = field[q1 + i];
+
+        code = 0;
+        if (a > L) code |= 8;
+        if (b > L) code |= 4;
+        if (c > L) code |= 2;
+        if (d > L) code |= 1;
+
+        var x0 = xs[i], x1 = xs[i + 1];
+        var dx = x1 - x0;
+
+        // Gradient in screen units -> local band width
+        var gx = ((b - a) + (c - d)) * 0.5 / dx;
+        var gy = ((d - a) + (c - b)) * 0.5 * invDy;
+        var gm = Math.sqrt(gx * gx + gy * gy);
+        var lw = gm > 1e-7 ? eps / gm : W_MAX;
+        if (lw < W_MIN) lw = W_MIN; else if (lw > W_MAX) lw = W_MAX;
+
+        var bIdx = (Math.log(lw / W_MIN) / logSpan * (NB - 1) + 0.5) | 0;
+        if (bIdx < 0) bIdx = 0; else if (bIdx > NB - 1) bIdx = NB - 1;
+
+        var Tx = 0, Ry = 0, Bx = 0, Ly = 0;
+        if ((code & 8) ? !(code & 4) : (code & 4)) Tx = x0 + (L - a) / (b - a) * dx;
+        if ((code & 4) ? !(code & 2) : (code & 2)) Ry = y0 + (L - b) / (c - b) * dy;
+        if ((code & 1) ? !(code & 2) : (code & 2)) Bx = x0 + (L - d) / (c - d) * dx;
+        if ((code & 8) ? !(code & 1) : (code & 1)) Ly = y0 + (L - a) / (d - a) * dy;
+
+        switch (code) {
+          case 1:  case 14: pushSeg(bIdx, x0, Ly, Bx, y1); break;
+          case 2:  case 13: pushSeg(bIdx, Bx, y1, x1, Ry); break;
+          case 3:  case 12: pushSeg(bIdx, x0, Ly, x1, Ry); break;
+          case 4:  case 11: pushSeg(bIdx, Tx, y0, x1, Ry); break;
+          case 6:  case  9: pushSeg(bIdx, Tx, y0, Bx, y1); break;
+          case 7:  case  8: pushSeg(bIdx, x0, Ly, Tx, y0); break;
+          case 5:  pushSeg(bIdx, x0, Ly, Tx, y0); pushSeg(bIdx, Bx, y1, x1, Ry); break;
+          case 10: pushSeg(bIdx, Tx, y0, x1, Ry); pushSeg(bIdx, x0, Ly, Bx, y1); break;
+        }
+      }
+    }
+  }
+
+  for (var bw = 0; bw < NB; bw++) {
+    bucketW[bw] = W_MIN * Math.exp(logSpan * (bw / (NB - 1)));
+  }
+
+  // =========================================================================
+  //  Colors
+  // =========================================================================
+  function hsl(h, s, l, a) {
+    return "hsla(" + h.toFixed(1) + "," + s.toFixed(1) + "%," + l.toFixed(1) + "%," + a + ")";
+  }
+
+  var pal = {};
+  function updatePalette(ht) {
+    pal.hBot = 250 + 8.5 * Math.sin(ht * 0.21);
+    pal.hTop = 255 + 9.5 * Math.sin(ht * 0.13 + 2.1);
+    pal.sBot = 80 + 8 * Math.sin(ht * 0.09 + 0.4);
+    pal.lBot = 45 + 5 * Math.sin(ht * 0.17 + 1.0);
+    pal.lTop = 57 + 6 * Math.sin(ht * 0.11);
+  }
+
+  var grainPat = null;
+  function buildGrain() {
+    var g = document.createElement("canvas");
+    g.width = g.height = 96;
+    var gc = g.getContext("2d");
+    var im = gc.createImageData(96, 96);
+    for (var i = 0; i < im.data.length; i += 4) {
+      var v = 128 + (Math.random() - 0.5) * 100;
+      im.data[i] = im.data[i + 1] = im.data[i + 2] = v;
+      im.data[i + 3] = 22;
+    }
+    gc.putImageData(im, 0, 0);
+    grainPat = ctx.createPattern(g, "repeat");
+  }
+
+  // =========================================================================
+  //  Drawing
+  // =========================================================================
+  function drawBackground() {
+    var g = ctx.createLinearGradient(0, H, 0, 0);
+    g.addColorStop(0.00, hsl(pal.hBot, pal.sBot, pal.lBot * 0.88, 1));
+    g.addColorStop(0.55, hsl(pal.hBot, pal.sBot, pal.lBot, 1));
+    g.addColorStop(1.00, hsl(pal.hTop, pal.sBot - 4, pal.lTop, 1));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Light source / reflection above the horizon
+    var lx = W * (0.5 + (mouse.x - 0.5) * 0.6);
+    var ly = Math.max(H * 0.02, yTop - H * 0.22) + (mouse.y - 0.5) * H * 0.15;
+    var rad = Math.max(W, H) * 0.7;
+    var rg = ctx.createRadialGradient(lx, ly, 0, lx, ly, rad);
+    rg.addColorStop(0.00, hsl(pal.hTop + 3, 72, 74, 0.34));
+    rg.addColorStop(0.40, hsl(pal.hTop, 74, 62, 0.13));
+    rg.addColorStop(1.00, hsl(pal.hTop, 74, 58, 0));
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Bloom via a small offscreen buffer — far cheaper than very wide strokes
+  // and therefore affordable on phones too.
+  var GS = 4;                       // downscale factor of the glow buffer
+  var glowCan = document.createElement("canvas");
+  var gctx = glowCan.getContext("2d");
+  var gw = 0, gh = 0;
+
+  function buildGlowBuffer() {
+    gw = Math.max(1, Math.round(W / GS));
+    gh = Math.max(1, Math.round(H / GS));
+    glowCan.width = gw;
+    glowCan.height = gh;
+  }
+
+  function traceBucket(c, b) {
+    var arr = bucket[b], n = bucketN[b];
+    if (!n) return 0;
+    c.beginPath();
+    for (var i = 0; i < n; i += 4) {
+      c.moveTo(arr[i], arr[i + 1]);
+      c.lineTo(arr[i + 2], arr[i + 3]);
+    }
+    return n;
+  }
+
+  function drawLines() {
+    var gl = P.glow;
+
+    // 1) Glow: render the lines small, then blend them back enlarged and soft
+    if (gl > 0.01) {
+      gctx.setTransform(1, 0, 0, 1, 0, 0);
+      gctx.clearRect(0, 0, gw, gh);
+      gctx.setTransform(1 / GS, 0, 0, 1 / GS, 0, 0);
+      gctx.lineCap = "round";
+      gctx.lineJoin = "round";
+      gctx.globalCompositeOperation = "lighter";
+      gctx.strokeStyle = "rgba(56,196,242,1)";
+      gctx.globalAlpha = 0.62;
+      for (var b = 0; b < NB; b++) {
+        if (!traceBucket(gctx, b)) continue;
+        gctx.lineWidth = Math.max(GS * 1.3, bucketW[b] * P.width);
+        gctx.stroke();
+      }
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = 0.40 * gl;
+      ctx.drawImage(glowCan, 0, 0, W, H);
+      var ex = W * 0.018, ey = H * 0.018;
+      ctx.globalAlpha = 0.22 * gl;
+      ctx.drawImage(glowCan, -ex, -ey, W + 2 * ex, H + 2 * ey);
+      ctx.restore();
+    }
+
+    // 2) Crisp lines: one pass per width class
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.globalCompositeOperation = "lighter";
+    for (var k = 0; k < NB; k++) {
+      if (!traceBucket(ctx, k)) continue;
+      var w = bucketW[k] * P.width;
+
+      ctx.strokeStyle = "rgba(64,214,246,1)";
+      ctx.globalAlpha = 0.62;
+      ctx.lineWidth = w;
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(178,250,255,1)";
+      ctx.globalAlpha = 0.82;
+      ctx.lineWidth = Math.max(0.6, Math.min(w * 0.42, w - 1.6));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Haze toward the horizon: eases the fine distant lines out
+  function drawHaze() {
+    var yEnd = Math.max(yTop + H * 0.06, bandEdges()[0]);
+    var g = ctx.createLinearGradient(0, yTop - H * 0.05, 0, yEnd);
+    g.addColorStop(0.00, hsl(pal.hTop, pal.sBot - 4, pal.lTop, 0.95));
+    g.addColorStop(0.45, hsl(pal.hTop, pal.sBot - 4, pal.lTop * 0.98, 0.6));
+    g.addColorStop(1.00, hsl(pal.hBot, pal.sBot, pal.lBot, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, yEnd);
+  }
+
+  // Foreground haze: concentrates the reflections into a band
+  function drawForeHaze() {
+    var yStart = Math.min(H * 0.97, bandEdges()[1]);
+    var g = ctx.createLinearGradient(0, yStart, 0, H);
+    g.addColorStop(0.00, hsl(pal.hBot, pal.sBot, pal.lBot * 0.9, 0));
+    g.addColorStop(0.55, hsl(pal.hBot, pal.sBot, pal.lBot * 0.85, 0.4));
+    g.addColorStop(1.00, hsl(pal.hBot, pal.sBot, pal.lBot * 0.8, 0.75));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, yStart, W, H - yStart);
+  }
+
+  function drawGrade() {
+    var g = ctx.createRadialGradient(W * 0.5, H * 0.5, Math.min(W, H) * 0.3,
+                                     W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(4,0,40,0.42)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    if (grainPat) {
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.translate((Math.random() * 96) | 0, (Math.random() * 96) | 0);
+      ctx.fillStyle = grainPat;
+      ctx.fillRect(-96, -96, W + 192, H + 192);
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  //  Size / resolution
+  // =========================================================================
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    VW = canvas.clientWidth || window.innerWidth;
+    VH = canvas.clientHeight || window.innerHeight;
+    canvas.width = Math.max(1, Math.round(VW * dpr));
+    canvas.height = Math.max(1, Math.round(VH * dpr));
+
+    ROT = P.tilt * Math.PI / 180;
+    var ca = Math.abs(Math.cos(ROT)), sa = Math.abs(Math.sin(ROT));
+    W = VW * ca + VH * sa;
+    H = VW * sa + VH * ca;
+
+    buildGrid();
+    buildGrain();
+    buildGlowBuffer();
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 250); });
+
+  // =========================================================================
+  //  Input
+  // =========================================================================
+  function setPointer(cx, cy) {
+    var r = canvas.getBoundingClientRect();
+    var dx = (cx - r.left) - r.width * 0.5;
+    var dy = (cy - r.top) - r.height * 0.5;
+    var c = Math.cos(-ROT), sn = Math.sin(-ROT);
+    mouse.tx = (dx * c - dy * sn + W * 0.5) / W;
+    mouse.ty = (dx * sn + dy * c + H * 0.5) / H;
+  }
+  canvas.addEventListener("pointermove", function (e) { setPointer(e.clientX, e.clientY); });
+  canvas.addEventListener("pointerdown", function (e) { setPointer(e.clientX, e.clientY); });
+  canvas.addEventListener("touchmove", function (e) {
+    if (e.touches.length) { setPointer(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }
+  }, { passive: false });
+
+  // =========================================================================
+  //  UI
+  // =========================================================================
+  var panel = document.getElementById("panel");
+  var toggle = document.getElementById("toggle");
+  var hint = document.getElementById("hint");
+  var statsEl = document.getElementById("stats");
+  var sliders = {};
+
+  function bind(id) {
+    var el = document.getElementById(id);
+    var out = document.getElementById("v-" + id);
+    sliders[id] = el;
+    function upd() {
+      P[id] = parseFloat(el.value);
+      out.textContent = P[id].toFixed(2);
+      if (id === "persp") buildGrid();
+      else if (id === "tilt") resize();
+    }
+    el.addEventListener("input", upd);
+    upd();
+  }
+  ["speed", "density", "lines", "width", "blob", "glow", "hue",
+   "round", "stretch", "band", "edge", "tilt", "persp"].forEach(bind);
+
+  function setPanel(open) {
+    if (open) panel.removeAttribute("hidden");
+    else panel.setAttribute("hidden", "");
+    toggle.textContent = open ? "✕" : "☰";
+  }
+  toggle.addEventListener("click", function () { setPanel(panel.hasAttribute("hidden")); });
+
+  // Anyone asking for reduced motion gets a still frame first and starts
+  // the animation themselves.
+  var paused = false;
+  try {
+    paused = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (e) { paused = false; }
+
+  var btnPause = document.getElementById("btn-pause");
+  if (paused) {
+    btnPause.textContent = "Resume";
+    document.getElementById("hint").textContent =
+      "Animation paused · ☰ opens the controls, Space starts it";
+  }
+  function togglePause() {
+    paused = !paused;
+    btnPause.textContent = paused ? "Resume" : "Pause";
+  }
+  btnPause.addEventListener("click", togglePause);
+
+  document.getElementById("btn-reset").addEventListener("click", function () {
+    Object.keys(DEFAULTS).forEach(function (k) {
+      sliders[k].value = DEFAULTS[k];
+      sliders[k].dispatchEvent(new Event("input"));
+    });
+  });
+
+  // Hands the current settings over as JSON, so they can be pasted back and
+  // adopted as the new defaults.
+  var btnCopy = document.getElementById("btn-copy");
+  var valuesBox = document.getElementById("values");
+
+  btnCopy.addEventListener("click", function () {
+    var out = {};
+    Object.keys(DEFAULTS).forEach(function (k) {
+      out[k] = Math.round(P[k] * 1000) / 1000;
+    });
+    var text = JSON.stringify(out);
+
+    valuesBox.hidden = false;
+    valuesBox.value = text;
+    valuesBox.focus();
+    valuesBox.select();
+
+    function report(msg) {
+      btnCopy.textContent = msg;
+      setTimeout(function () { btnCopy.textContent = "Copy values"; }, 2000);
+    }
+    function fallback() {
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      // The text stays selected either way, so it can always be copied by hand.
+      report(ok ? "Copied" : "Copy from box");
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { report("Copied"); }, fallback);
+    } else {
+      fallback();
+    }
+  });
+
+  document.getElementById("btn-full").addEventListener("click", function () {
+    var el = document.documentElement;
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else if (el.requestFullscreen) { el.requestFullscreen(); }
+    else if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); }
+  });
+
+  window.addEventListener("keydown", function (e) {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    var k = e.key.toLowerCase();
+    if (k === "h") setPanel(panel.hasAttribute("hidden"));
+    else if (e.code === "Space") { e.preventDefault(); togglePause(); }
+    else if (k === "f") document.getElementById("btn-full").click();
+  });
+
+  setTimeout(function () { hint.classList.add("fade"); }, 7000);
+
+  var visible = true;
+  document.addEventListener("visibilitychange", function () {
+    visible = !document.hidden;
+    if (visible) last = performance.now();
+  });
+
+  // =========================================================================
+  //  Loop with adaptive quality
+  // =========================================================================
+  var waveT = 0, hueT = 0, last = performance.now();
+  var avgMs = 16, statTick = 0, adaptTick = 0;
+
+  resize();
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!visible) { last = now; return; }
+
+    var dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.06) dt = 0.06;
+
+    if (!paused) {
+      waveT += dt * P.speed * 1.6;    // waves: fast
+      hueT  += dt * P.hue * 0.5;      // colors: slow
+    }
+    mouse.x += (mouse.tx - mouse.x) * Math.min(1, dt * 3.2);
+    mouse.y += (mouse.ty - mouse.y) * Math.min(1, dt * 3.2);
+
+    var t0 = performance.now();
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(VW * 0.5, VH * 0.5);
+    ctx.rotate(ROT);
+    ctx.translate(-W * 0.5, -H * 0.5);
+
+    updatePalette(hueT);
+    updateBand();
+    packWaves(waveT);
+    computeField(waveT);
+    smoothField(P.round);
+    fieldStats();
+
+    for (var b = 0; b < NB; b++) bucketN[b] = 0;
+    var k = 2.15 - 1.45 * P.lines;              // distance from the mean in sigma
+    LEVELS[0] = fMean + fStd * k;               // isolated loops
+    LEVELS[1] = fMean - fStd * k * 0.96;
+    LEVELS[2] = fMean + fStd * (k + 1.15);      // small cores
+    LEVELS[3] = fMean + fStd * k * 0.78;        // long meanders
+    LEVELS[4] = fMean - fStd * k * 0.82;
+    var epsBase = fStd * 0.055 * (0.25 + P.blob);
+    for (var i = 0; i < LEVELS.length; i++) contour(LEVELS[i], epsBase);
+
+    drawBackground();
+    drawLines();
+    drawHaze();
+    drawForeHaze();
+    drawGrade();
+
+    var ms = performance.now() - t0;
+    avgMs += (ms - avgMs) * 0.06;
+
+    if (++adaptTick > 45) {
+      adaptTick = 0;
+      var changed = false;
+      if (avgMs > 15 && cellPx < 18) { cellPx = Math.min(18, cellPx + 1.5); changed = true; }
+      else if (avgMs < 7.5 && cellPx > 4) { cellPx = Math.max(4, cellPx - 1); changed = true; }
+      if (changed) buildGrid();
+    }
+
+    if (++statTick > 20) {
+      statTick = 0;
+      statsEl.textContent = COLS + "×" + ROWS + " grid · " + avgMs.toFixed(1) +
+        " ms/frame · ~" + Math.min(Math.round(1000 / Math.max(avgMs, 1)), 60) + " fps";
+    }
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

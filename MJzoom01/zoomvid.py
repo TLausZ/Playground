@@ -49,13 +49,29 @@ def ss(a, b, x):
     t = min(max((x - a) / (b - a), 0.0), 1.0)
     return t * t * (3 - 2 * t)
 
-def box(m, vx, vy, vs):
-    """Sichtfenster (Zentrum vx,vy, Kante vs) in Pixelkoordinaten von Bild m."""
-    px = imgs[m].size[0]
-    x0 = (vx - vs / 2 - (c[m][0] - w[m] / 2)) / w[m] * px + PAD
-    y0 = (vy - vs / 2 - (c[m][1] - w[m] / 2)) / w[m] * px + PAD
+def box(m, vx, vy, vs, px, pd):
+    """Sichtfenster (Zentrum vx,vy, Kante vs) in Pixelkoordinaten eines Bildes der Stufe m,
+    das den Stufeninhalt mit px Pixeln Kantenlaenge und pd Pixeln Rand ablegt."""
+    x0 = (vx - vs / 2 - (c[m][0] - w[m] / 2)) / w[m] * px + pd
+    y0 = (vy - vs / 2 - (c[m][1] - w[m] / 2)) / w[m] * px + pd
     d = vs / w[m] * px
     return (x0, y0, x0 + d, y0 + d)
+
+def mix(k, inner):
+    """Stufe k+1 so weit hochskaliert, dass Stufe k in Originalaufloesung hineinpasst,
+    inner an der gemessenen Weltposition eingesetzt. Damit laesst sich auch die innere
+    Ebene per resize(box=...) subpixelgenau ziehen statt an gerundete Pixel gepastet."""
+    r = imgs[k].size[0] * (w[k + 1] / w[k]) / imgs[k + 1].size[0]
+    big = pads[k + 1].resize((round(pads[k + 1].size[0] * r),) * 2, Image.LANCZOS)
+    px, pd = imgs[k + 1].size[0] * r, PAD * r
+    n = max(1, round(w[k] / w[k + 1] * px))
+    big.paste(inner if inner.size[0] == n else inner.resize((n, n), Image.LANCZOS),
+              (round((c[k][0] - w[k] / 2 - (c[k + 1][0] - w[k + 1] / 2)) / w[k + 1] * px + pd),
+               round((c[k][1] - w[k] / 2 - (c[k + 1][1] - w[k + 1] / 2)) / w[k + 1] * px + pd)))
+    return big, px, pd
+
+mixed = [mix(k, imgs[k]) for k in range(len(fits))]
+mixed_end = mix(0, img_end) if img_end else None
 
 def frame(u, back):
     k = min(max(bisect.bisect_right(cum, u) - 1, 0), len(fits) - 1)
@@ -63,16 +79,13 @@ def frame(u, back):
     vs = w[k] * (w[k + 1] / w[k]) ** t
     vx = c[k][0] + (c[k + 1][0] - c[k][0]) * t
     vy = c[k][1] + (c[k + 1][1] - c[k][1]) * t
-    base = pads[k + 1].resize((SIZE, SIZE), Image.LANCZOS, box=box(k + 1, vx, vy, vs))
+    base = pads[k + 1].resize((SIZE, SIZE), Image.LANCZOS,
+                              box=box(k + 1, vx, vy, vs, imgs[k + 1].size[0], PAD))
     alpha = 1.0 - ss(FADE[0], FADE[1], t)
     if alpha <= 0.002:
         return base
-    inner = img_end if (back and k == 0 and img_end) else imgs[k]
-    n = max(1, round(w[k] / vs * SIZE))
-    top = base.copy()
-    top.paste(inner.resize((n, n), Image.LANCZOS),
-              (round((c[k][0] - w[k] / 2 - (vx - vs / 2)) / vs * SIZE),
-               round((c[k][1] - w[k] / 2 - (vy - vs / 2)) / vs * SIZE)))
+    big, px, pd = mixed_end if (back and k == 0 and mixed_end) else mixed[k]
+    top = big.resize((SIZE, SIZE), Image.LANCZOS, box=box(k + 1, vx, vy, vs, px, pd))
     return Image.blend(base, top, alpha)
 
 # Geschwindigkeitsprofil ueber einen Halbweg: null an den Raendern, konstant dazwischen

@@ -5,7 +5,7 @@ Der Zoom laeuft raus bis zum weitesten Bild und wieder rein; auf dem Rueckweg
 ersetzt end.png die innerste Stufe. Geschwindigkeit ist an beiden Enden und am
 Umkehrpunkt praktisch null, dazwischen konstant.
 """
-import bisect, json, math, subprocess, sys
+import bisect, json, math, os, subprocess, sys
 from PIL import Image
 
 FITS, OUT = sys.argv[1], sys.argv[2]
@@ -19,7 +19,8 @@ PAD = 384       # Rand, damit das Sichtfenster ueber die Bildkante hinausragen d
 FADE = (0.25, 0.85)   # Crossfade-Fenster innerhalb eines Segments
 
 fits = json.load(open(FITS))
-paths = [fits[0]["inner"]] + [f["outer"] for f in fits]
+here = os.path.dirname(os.path.abspath(FITS))   # Bildnamen stehen relativ zur fits.json
+paths = [os.path.join(here, p) for p in [fits[0]["inner"]] + [f["outer"] for f in fits]]
 
 def pad(im):
     p = Image.new("RGB", (im.size[0] + 2 * PAD, im.size[1] + 2 * PAD), im.getpixel((4, 4)))

@@ -1,5 +1,5 @@
 """Findet fuer jedes Bildpaar (innen, aussen) Skala und Zentrum per NCC-Template-Matching."""
-import sys, glob, re, json
+import sys, glob, os, re, json
 import numpy as np
 from PIL import Image
 
@@ -50,7 +50,8 @@ for a, b in zip(files, files[1:]):
     ka = re.search(r"_(\d+)\.png$", a).group(1)
     kb = re.search(r"_(\d+)\.png$", b).group(1)
     cx, cy = x + w / 2, y + w / 2
-    out.append(dict(inner=a, outer=b, pair=f"{ka}->{kb}", scale=round(s, 4),
+    out.append(dict(inner=os.path.basename(a), outer=os.path.basename(b),
+                    pair=f"{ka}->{kb}", scale=round(s, 4),
                     cx=round(cx, 4), cy=round(cy, 4), score=round(float(score), 3)))
     print(f"{ka}->{kb}  scale={s:.3f}  center=({cx:.3f},{cy:.3f})  ncc={score:.3f}", flush=True)
 json.dump(out, open(sys.argv[2], "w"), indent=1)

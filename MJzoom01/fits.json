@@ -1,0 +1,101 @@
+[
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_2.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_3.png",
+  "pair": "2->3",
+  "scale": 1.3427,
+  "cx": 0.5,
+  "cy": 0.5,
+  "score": 0.781
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_3.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_4.png",
+  "pair": "3->4",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.4987,
+  "score": 0.979
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_4.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_5.png",
+  "pair": "4->5",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.4987,
+  "score": 0.965
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_5.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_6.png",
+  "pair": "5->6",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.5013,
+  "score": 0.931
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_6.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_7.png",
+  "pair": "6->7",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.5013,
+  "score": 0.961
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_7.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_8.png",
+  "pair": "7->8",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.5013,
+  "score": 0.945
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_8.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_9.png",
+  "pair": "8->9",
+  "scale": 2.0105,
+  "cx": 0.4596,
+  "cy": 0.4987,
+  "score": 0.967
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_9.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_10.png",
+  "pair": "9->10",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.5013,
+  "score": 0.956
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_10.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_11.png",
+  "pair": "10->11",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.4987,
+  "score": 0.963
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_11.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_12.png",
+  "pair": "11->12",
+  "scale": 2.0105,
+  "cx": 0.4987,
+  "cy": 0.4987,
+  "score": 0.965
+ },
+ {
+  "inner": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_12.png",
+  "outer": "TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_14.png",
+  "pair": "12->14",
+  "scale": 1.9394,
+  "cx": 0.7422,
+  "cy": 0.7422,
+  "score": 0.986
+ }
+]

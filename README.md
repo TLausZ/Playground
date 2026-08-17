@@ -10,8 +10,7 @@
 
 Just my creative ideas that I can't put anywhere else. Enjoy.
 
-Everything here is self-contained — no dependencies, no build step. Open the
-HTML file and it runs.
+Mostly self-contained — no build step. Open the HTML file and it runs.
 
 ## What's in here
 
@@ -25,6 +24,15 @@ HTML file and it runs.
     <strong><a href="Pool%20Caustics/">Pool Caustics</a></strong><br>
     The light reflections drifting across a swimming pool surface,
     recreated in a single HTML file.
+  </p>
+</td>
+<td width="45%" valign="top">
+  <a href="MJzoom01/">
+    <img src="MJzoom01/TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_2.png" alt="Whackaddodle MJ zoom">
+  </a>
+  <p>
+    <strong><a href="MJzoom01/">Whackaddodle MJ zoom</a></strong><br>
+    Midjourney zoom-out steps stitched back into one continuous camera move.
   </p>
 </td>
 </tr>

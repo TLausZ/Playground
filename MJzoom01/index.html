@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151312">
+<title>Whackaddodle MJ zoom</title>
+<meta name="description" content="Twelve Midjourney frames, each zoomed out from the last, stitched into one continuous camera move.">
+<style>
+  :root {
+    --ink: #151312;
+    --surface: #1e1b19;
+    --hairline: #332e2a;
+    --text: #e8e3db;
+    --muted: #9b938a;
+    --accent: #ffcc33;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    padding: clamp(24px, 5vw, 56px) clamp(18px, 5vw, 40px) 64px;
+  }
+  .page { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: clamp(22px, 4vw, 32px); }
+
+  a.back {
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: .05em;
+    color: var(--muted); text-decoration: none; align-self: flex-start;
+  }
+  a.back:hover, a.back:focus-visible { color: var(--accent); }
+
+  h1 {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: clamp(21px, 4.4vw, 30px);
+    font-weight: 600;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+  }
+  p { margin: 0; max-width: 64ch; }
+  p.lead { color: var(--text); font-size: clamp(15px, 2.6vw, 17px); }
+  p.note { color: var(--muted); font-size: clamp(13.5px, 2.3vw, 15px); }
+
+  video {
+    display: block; width: 100%; height: auto;
+    background: #0e0d0c;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+  }
+
+  dl.facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 8px 20px;
+    margin: 0;
+    padding: 18px 20px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    font-size: 14px;
+  }
+  dl.facts dt {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted); padding-top: 3px;
+  }
+  dl.facts dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+
+  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+  a.link:hover, a.link:focus-visible { border-bottom-color: currentColor; }
+
+  footer {
+    border-top: 1px solid var(--hairline);
+    padding-top: 18px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <a class="back" href="../">← BRAIN farts</a>
+
+  <h1>Whackaddodle MJ zoom</h1>
+
+  <p class="lead">Twelve Midjourney frames, each one zoomed out from the last,
+  stitched back together into a single continuous camera move. The film runs out
+  to the widest frame and back in, slowing to a near stop at both ends and at the
+  turning point.</p>
+
+  <video controls playsinline preload="none" poster="poster.jpg" width="720" height="720">
+    <source src="zoom_pingpong_720.mp4" type="video/mp4">
+    Your browser can't play this video —
+    <a class="link" href="zoom_pingpong_720.mp4">download the file</a> instead.
+  </video>
+
+  <dl class="facts">
+    <dt>Prompt</dt>
+    <dd>isometric Bitcoin B --sref 3879714017</dd>
+    <dt>Film</dt>
+    <dd>720 × 720, 37 seconds, 11 MB</dd>
+    <dt>Made with</dt>
+    <dd><a class="link" href="match.py">match.py</a> measures the zoom between frames,
+      <a class="link" href="zoomvid.py">zoomvid.py</a> renders the move</dd>
+  </dl>
+
+  <p class="note">The measuring step is the whole trick: each frame sits somewhere
+  inside its predecessor at an unknown scale, so <code>match.py</code> searches for
+  the fit and writes it to <code>fits.json</code>. Without that the seams between
+  frames jump. Needs ffmpeg, numpy and pillow.</p>
+
+  <footer>
+    <a class="link" href="https://github.com/TLausZ/Playground/tree/main/MJzoom01">Source frames and scripts on GitHub</a>
+  </footer>
+
+</div>
+</body>
+</html>

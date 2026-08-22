@@ -10,7 +10,8 @@
 
 Just my creative ideas that I can't put anywhere else. Enjoy.
 
-Mostly self-contained — no build step. Open the HTML file and it runs.
+Mostly self-contained — no build step. Open the HTML file and it runs,
+or try the live versions: **<https://tlausz.github.io/Playground/>**
 
 ## What's in here
 
@@ -33,6 +34,18 @@ Mostly self-contained — no build step. Open the HTML file and it runs.
   <p>
     <strong><a href="MJzoom01/">Whackaddodle MJ zoom</a></strong><br>
     Midjourney zoom-out steps stitched back into one continuous camera move.
+  </p>
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+  <a href="Wave%20Function%20Collapse/">
+    <img src="Wave%20Function%20Collapse/screenshot.jpg" alt="Wave Function Collapse">
+  </a>
+  <p>
+    <strong><a href="Wave%20Function%20Collapse/">Wave Function Collapse</a></strong><br>
+    A tile map that builds itself: the least certain cell picks a tile, the
+    constraint propagates, and the grid settles — on squares or on hexagons.
   </p>
 </td>
 </tr>

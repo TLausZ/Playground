@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2d2d2d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Wave Function Collapse</title>
+<style>
+  :root {
+    --ui-bg: rgba(24, 24, 24, 0.72);
+    --ui-border: rgba(255, 204, 51, 0.22);
+    --ui-text: rgba(240, 239, 236, 0.94);
+    --ui-accent: #ffcc33;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: #2d2d2d; overflow: hidden; overscroll-behavior: none;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas#c {
+    position: fixed; inset: 0; display: block; width: 100%; height: 100%;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+
+  #toggle {
+    position: fixed; z-index: 12;
+    top: calc(14px + var(--safe-t)); left: 14px;
+    width: 42px; height: 42px; border-radius: 12px;
+    display: grid; place-items: center; font-size: 17px; line-height: 1;
+    color: var(--ui-text); background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    cursor: pointer;
+  }
+
+  #panel {
+    position: fixed; z-index: 11;
+    top: calc(66px + var(--safe-t)); left: 14px;
+    width: 264px; max-width: calc(100vw - 28px);
+    max-height: calc(100vh - 90px - var(--safe-t) - var(--safe-b));
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 14px 16px calc(14px + var(--safe-b));
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 16px;
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    backdrop-filter: blur(16px) saturate(1.2);
+    color: var(--ui-text); font-size: 12.5px;
+    box-shadow: 0 12px 44px rgba(0,0,0,.45);
+    transition: opacity .22s ease, transform .22s ease;
+  }
+  #panel[hidden] { display: block; opacity: 0; transform: translateY(-10px) scale(.98); pointer-events: none; }
+
+  #panel h1 {
+    margin: 0 0 3px; font-size: 12px; font-weight: 650; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ui-accent);
+  }
+  #panel .sub { margin: 0 0 12px; opacity: .5; font-size: 11px; line-height: 1.45; }
+
+  .seg { display: flex; gap: 6px; margin-bottom: 12px; }
+  .seg button {
+    flex: 1; padding: 7px 6px; border-radius: 10px; cursor: pointer;
+    font: inherit; font-size: 11.5px;
+    color: var(--ui-text); background: rgba(240,239,236,.06);
+    border: 1px solid rgba(240,239,236,.14);
+  }
+  .seg button[aria-pressed="true"] {
+    background: rgba(255,204,51,.18); border-color: var(--ui-border); color: var(--ui-accent);
+  }
+
+  .row { margin-bottom: 9px; }
+  .row label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 3px;
+  }
+  .row label .val { opacity: .55; font-variant-numeric: tabular-nums; font-size: 11px; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; display: block;
+    width: 100%; height: 22px; background: transparent; outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 3px; background: rgba(240,239,236,.22);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; margin-top: -8px;
+    width: 19px; height: 19px; border-radius: 50%;
+    background: var(--ui-accent); border: 2px solid #2d2d2d;
+    box-shadow: 0 1px 5px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-track { height: 3px; border-radius: 3px; background: rgba(240,239,236,.22); }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: 2px solid #2d2d2d;
+    background: var(--ui-accent);
+  }
+
+  .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; cursor: pointer; }
+  .check input { accent-color: var(--ui-accent); width: 15px; height: 15px; margin: 0; }
+
+  .buttons { display: flex; gap: 7px; margin-top: 12px; }
+  .buttons button {
+    flex: 1; padding: 8px 6px; border-radius: 10px; cursor: pointer;
+    font: inherit; font-size: 11.5px;
+    color: var(--ui-text); background: rgba(255,204,51,.10);
+    border: 1px solid var(--ui-border);
+  }
+  .buttons button:active { background: rgba(255,204,51,.22); }
+
+  .meta {
+    margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(240,239,236,.12);
+    font-size: 11px; opacity: .55; line-height: 1.55; font-variant-numeric: tabular-nums;
+  }
+  .meta b { font-weight: 600; opacity: .9; }
+  kbd {
+    font: inherit; font-size: 10px; padding: 1px 4px; border-radius: 4px;
+    background: rgba(240,239,236,.10); border: 1px solid rgba(240,239,236,.16);
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="toggle" title="Panel (H)">☰</div>
+
+<div id="panel">
+  <h1>Wave Function Collapse</h1>
+  <p class="sub">Every cell starts as every tile at once. The least certain cell picks one, the constraint propagates outward, and the map settles.</p>
+
+  <div class="seg">
+    <button id="bSquare" aria-pressed="true">Square</button>
+    <button id="bHex" aria-pressed="false">Hexagon</button>
+  </div>
+
+  <div class="row">
+    <label>Grid <span class="val" id="vGrid">16</span></label>
+    <input type="range" id="sGrid" min="4" max="48" step="1" value="16">
+  </div>
+  <div class="row">
+    <label>Speed <span class="val" id="vSpeed">2.0</span></label>
+    <input type="range" id="sSpeed" min="0.2" max="24" step="0.2" value="2">
+  </div>
+  <div class="row">
+    <label>Blanks <span class="val" id="vBlank">4.0</span></label>
+    <input type="range" id="sBlank" min="0" max="12" step="0.5" value="4">
+  </div>
+  <div class="row">
+    <label>Junctions <span class="val" id="vJunction">1.0</span></label>
+    <input type="range" id="sJunction" min="0" max="8" step="0.5" value="1">
+  </div>
+  <div class="row">
+    <label>Line width <span class="val" id="vWidth">1.0</span></label>
+    <input type="range" id="sWidth" min="0.3" max="3" step="0.1" value="1">
+  </div>
+
+  <label class="check"><input type="checkbox" id="cSeal" checked> Seal the border</label>
+  <label class="check"><input type="checkbox" id="cGhost" checked> Show uncertainty</label>
+  <label class="check"><input type="checkbox" id="cLoop" checked> Restart when done</label>
+
+  <div class="buttons">
+    <button id="bRestart">Restart</button>
+    <button id="bPause">Pause</button>
+  </div>
+
+  <div class="meta">
+    <div>seed <b id="mSeed">–</b> · <span id="mState">collapsing</span></div>
+    <div><b id="mTiles">12</b> tiles · open <b id="mOpen">0</b> · backtracks <b id="mBack">0</b></div>
+    <div style="margin-top:6px"><kbd>H</kbd> panel · <kbd>Space</kbd> pause · <kbd>R</kbd> restart · <kbd>G</kbd> grid · <kbd>F</kbd> fullscreen</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ==================================================================
+ * Wave Function Collapse on two lattices.
+ *
+ * A cell holds the set of tiles it could still become. Collapsing the
+ * least certain cell to one tile shrinks its neighbours' sets, and that
+ * shrinking travels outward until nothing changes. A tile is nothing but
+ * a pattern of pipes leaving through its edges, so two cells fit when the
+ * edge they share reads the same on both sides.
+ *
+ * The square lattice has 4 edges per cell, the hexagonal one has 6 —
+ * the algorithm below never learns which, it only asks the lattice for
+ * neighbours and edge indices.
+ * ================================================================== */
+
+/* ------------------------------------------------------------------
+ * Lattices
+ * ------------------------------------------------------------------ */
+
+// Square: edges/neighbours in cyclic order N, E, S, W. Opposite = d + 2.
+const SQUARE = {
+  D: 4,
+  offsets: () => [[0, -1], [1, 0], [0, 1], [-1, 0]],
+  // Pixel layout for an N x N grid inside a box of `span`.
+  layout(N, span) {
+    const c = span / N;
+    const spokes = [[0, -c / 2], [c / 2, 0], [0, c / 2], [-c / 2, 0]];
+    return {
+      w: span, h: span, cell: c, reach: c / 2, spokes,
+      center: (x, y) => [x * c + c / 2, y * c + c / 2],
+    };
+  },
+};
+
+// Hexagon, pointy top, odd rows pushed half a cell right (odd-r offset).
+// Edges/neighbours in cyclic order E, NE, NW, W, SW, SE. Opposite = d + 3.
+const HEX = {
+  D: 6,
+  offsets: (y) => (y & 1
+    ? [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]]
+    : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]]),
+  layout(N, span) {
+    // Fit both the staggered width and the 3/4-stacked height into the box.
+    const R = Math.min(span / ((N + 0.5) * Math.sqrt(3)), span / (1.5 * (N - 1) + 2));
+    const w = Math.sqrt(3) * R;      // hex width, flat side to flat side
+    const a = w / 2;                 // centre to edge midpoint
+    const rise = 1.5 * R;            // row spacing
+    const spokes = [0, -60, -120, 180, 120, 60].map((deg) => {
+      const t = (deg * Math.PI) / 180;
+      return [Math.cos(t) * a, Math.sin(t) * a];
+    });
+    return {
+      w: w * (N + 0.5), h: rise * (N - 1) + 2 * R, cell: w, reach: a, spokes,
+      center: (x, y) => [x * w + (y & 1 ? w : w / 2), y * rise + R],
+    };
+  },
+};
+
+/* ------------------------------------------------------------------
+ * Tile set — every pattern of pipes with no dead ends.
+ * 4 edges give 12 tiles, 6 edges give 58.
+ * ------------------------------------------------------------------ */
+function buildTiles(D) {
+  const tiles = [];
+  for (let bits = 0; bits < 1 << D; bits++) {
+    const edges = [];
+    let degree = 0;
+    for (let d = 0; d < D; d++) {
+      const on = (bits >> d) & 1;
+      edges.push(on);
+      degree += on;
+    }
+    if (degree === 1) continue; // a pipe that just stops looks like a mistake
+    tiles.push({ edges, degree });
+  }
+  return tiles;
+}
+
+/* Small seeded PRNG, so a seed always redraws the same map. */
+const mulberry32 = (a) => () => {
+  a = (a + 0x6d2b79f5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+/* ------------------------------------------------------------------
+ * State
+ * ------------------------------------------------------------------ */
+const cfg = {
+  mode: 'square',
+  grid: 16,
+  speed: 2,
+  blank: 4,
+  junction: 1,
+  width: 1,
+  seal: true,
+  ghost: true,
+  loop: true,
+};
+
+let lattice = SQUARE;
+let D = 4;             // edges per cell
+let TILES = [];        // the tile set for this lattice
+let T = 0;             // how many tiles
+let N = 16;            // grid side
+let cells = 0;
+
+let allow;             // Uint8Array(cells * T): is tile t still possible here?
+let count;             // Int16Array(cells): how many tiles are left
+let stamp;             // Float32Array(cells): when the cell settled, for the trail
+let neighbours;        // Int32Array(cells * D): neighbour index or -1
+let weights;           // per-tile weight from the sliders
+
+let trail = [];        // every removal, so a wrong guess can be undone
+let stack = [];        // one entry per guess
+let base = 0;          // trail length after the border was sealed
+
+let rand = mulberry32(1);
+let seed = 0;
+let open = 0;          // cells still holding more than one tile
+let backtracks = 0;
+let contradicted = false;
+let doneAt = 0;
+let carry = 0;
+let paused = false;
+let now = 0;
+
+const weightOf = (tile) => {
+  if (tile.degree === 0) return Math.max(cfg.blank, 0.0001);
+  if (tile.degree >= 3) return Math.max(cfg.junction, 0.0001);
+  // Degree two: a pipe running straight through reads calmer than a bend.
+  for (let d = 0; d < D; d++) {
+    if (tile.edges[d] && tile.edges[(d + D / 2) % D]) return 2;
+  }
+  return 1;
+};
+const refreshWeights = () => { weights = TILES.map(weightOf); };
+
+function reset(newSeed) {
+  lattice = cfg.mode === 'hex' ? HEX : SQUARE;
+  D = lattice.D;
+  TILES = buildTiles(D);
+  T = TILES.length;
+  N = cfg.grid;
+  cells = N * N;
+  refreshWeights();
+
+  seed = newSeed === undefined ? (Math.random() * 1e9) | 0 : newSeed;
+  rand = mulberry32(seed);
+
+  allow = new Uint8Array(cells * T).fill(1);
+  count = new Int16Array(cells).fill(T);
+  stamp = new Float32Array(cells);
+  neighbours = new Int32Array(cells * D);
+  for (let y = 0; y < N; y++) {
+    const offs = lattice.offsets(y);
+    for (let x = 0; x < N; x++) {
+      for (let d = 0; d < D; d++) {
+        const nx = x + offs[d][0];
+        const ny = y + offs[d][1];
+        const inside = nx >= 0 && nx < N && ny >= 0 && ny < N;
+        neighbours[(y * N + x) * D + d] = inside ? ny * N + nx : -1;
+      }
+    }
+  }
+
+  trail = [];
+  stack = [];
+  open = cells;
+  backtracks = 0;
+  contradicted = false;
+  doneAt = 0;
+  carry = 0;
+
+  if (cfg.seal) sealBorder();
+  base = trail.length;
+
+  ui.seed.textContent = seed;
+  ui.tiles.textContent = T;
+}
+
+/* ------------------------------------------------------------------
+ * The three primitives: drop a tile, undo back to a mark, propagate.
+ * ------------------------------------------------------------------ */
+function drop(cell, tile) {
+  const i = cell * T + tile;
+  if (!allow[i]) return true;
+  allow[i] = 0;
+  trail.push(i);
+  const left = --count[cell];
+  if (left === 1) { open--; stamp[cell] = now; }
+  return left > 0;
+}
+
+function undoTo(mark) {
+  while (trail.length > mark) {
+    const i = trail.pop();
+    allow[i] = 1;
+    const cell = (i / T) | 0;
+    if (++count[cell] === 2) open++;
+  }
+}
+
+/* Arc consistency. A cell only ever tells its neighbour one thing: which
+ * values the shared edge may still take. If both 0 and 1 are still on the
+ * table nothing is constrained, so most of the grid is skipped cheaply. */
+function propagate(start) {
+  const queue = [start];
+  while (queue.length > 0) {
+    const cell = queue.pop();
+    for (let d = 0; d < D; d++) {
+      const n = neighbours[cell * D + d];
+      if (n < 0) continue;
+      let has0 = false;
+      let has1 = false;
+      for (let t = 0; t < T; t++) {
+        if (!allow[cell * T + t]) continue;
+        if (TILES[t].edges[d]) has1 = true; else has0 = true;
+        if (has0 && has1) break;
+      }
+      if (has0 && has1) continue;
+      const need = has1 ? 1 : 0;
+      const theirEdge = (d + D / 2) % D;
+      let changed = false;
+      for (let t = 0; t < T; t++) {
+        if (!allow[n * T + t] || TILES[t].edges[theirEdge] === need) continue;
+        if (!drop(n, t)) return false; // neighbour ran out of options
+        changed = true;
+      }
+      if (changed) queue.push(n);
+    }
+  }
+  return true;
+}
+
+/* A pipe may not leave the grid: on the border, edges without a neighbour
+ * are forced blank. Runs once per restart and is never undone. */
+function sealBorder() {
+  const touched = [];
+  for (let cell = 0; cell < cells; cell++) {
+    let changed = false;
+    for (let d = 0; d < D; d++) {
+      if (neighbours[cell * D + d] >= 0) continue;
+      for (let t = 0; t < T; t++) {
+        if (allow[cell * T + t] && TILES[t].edges[d]) { drop(cell, t); changed = true; }
+      }
+    }
+    if (changed) touched.push(cell);
+  }
+  for (const cell of touched) propagate(cell);
+}
+
+/* ------------------------------------------------------------------
+ * Collapsing
+ * ------------------------------------------------------------------ */
+function pickCell() {
+  let best = -1;
+  let bestCount = Infinity;
+  let ties = 0;
+  for (let c = 0; c < cells; c++) {
+    const k = count[c];
+    if (k <= 1) continue;
+    if (k < bestCount) { bestCount = k; best = c; ties = 1; }
+    else if (k === bestCount && rand() < 1 / ++ties) best = c; // organic front
+  }
+  return best;
+}
+
+function optionsOf(cell) {
+  const opts = [];
+  for (let t = 0; t < T; t++) if (allow[cell * T + t]) opts.push(t);
+  return opts;
+}
+
+function takeWeighted(opts) {
+  let total = 0;
+  for (const t of opts) total += weights[t];
+  let roll = rand() * total;
+  let idx = opts.length - 1;
+  for (let i = 0; i < opts.length; i++) {
+    roll -= weights[opts[i]];
+    if (roll <= 0) { idx = i; break; }
+  }
+  return opts.splice(idx, 1)[0];
+}
+
+function assign(cell, tile) {
+  for (let t = 0; t < T; t++) {
+    if (t !== tile && allow[cell * T + t] && !drop(cell, t)) return false;
+  }
+  return propagate(cell);
+}
+
+function collapseOne() {
+  const cell = pickCell();
+  if (cell < 0) return;
+  const rest = optionsOf(cell);
+  const tile = takeWeighted(rest);
+  stack.push({ cell, rest, mark: trail.length });
+  if (!assign(cell, tile)) backtrack();
+}
+
+/* Undo the last guess, try the next tile there, and keep unwinding while
+ * the cells above the failure have nothing left to try. */
+function backtrack() {
+  while (stack.length > 0) {
+    const step = stack[stack.length - 1];
+    undoTo(step.mark);
+    backtracks++;
+    if (step.rest.length === 0) { stack.pop(); continue; }
+    if (assign(step.cell, takeWeighted(step.rest))) return true;
+  }
+  undoTo(base);
+  contradicted = true; // this grid cannot be solved at all
+  return false;
+}
+
+/* ------------------------------------------------------------------
+ * Drawing
+ * ------------------------------------------------------------------ */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+const TRAIL_MS = 900; // how long a freshly settled cell stays gold
+const HOT = [255, 204, 51];
+const COOL = [240, 239, 236];
+
+const soleTile = (cell) => {
+  for (let t = 0; t < T; t++) if (allow[cell * T + t]) return t;
+  return -1;
+};
+
+function draw() {
+  ctx.fillStyle = '#2d2d2d';
+  ctx.fillRect(0, 0, W, H);
+
+  const span = Math.min(W, H) * 0.9;
+  const geo = lattice.layout(N, span);
+  const ox = (W - geo.w) / 2;
+  const oy = (H - geo.h) / 2;
+  const lw = Math.max(0.6, geo.cell * 0.085 * cfg.width);
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Cells still weighing several tiles: a ring that tightens as they decide.
+  if (cfg.ghost) {
+    ctx.lineWidth = Math.max(0.5, lw * 0.5);
+    for (let cell = 0; cell < cells; cell++) {
+      if (count[cell] <= 1) continue;
+      const certainty = 1 - (count[cell] - 1) / (T - 1);
+      const [cx, cy] = geo.center(cell % N, (cell / N) | 0);
+      const r = geo.reach * (0.18 + 0.5 * (1 - certainty));
+      ctx.strokeStyle = 'rgba(240,239,236,' + (0.05 + 0.16 * certainty).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(ox + cx, oy + cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  for (let cell = 0; cell < cells; cell++) {
+    if (count[cell] !== 1) continue;
+    const tile = TILES[soleTile(cell)];
+    const [cx, cy] = geo.center(cell % N, (cell / N) | 0);
+    const x = ox + cx;
+    const y = oy + cy;
+
+    const age = Math.min(1, (now - stamp[cell]) / TRAIL_MS);
+    const heat = 1 - age * age;
+    const col = 'rgb(' +
+      Math.round(COOL[0] + (HOT[0] - COOL[0]) * heat) + ',' +
+      Math.round(COOL[1] + (HOT[1] - COOL[1]) * heat) + ',' +
+      Math.round(COOL[2] + (HOT[2] - COOL[2]) * heat) + ')';
+
+    ctx.strokeStyle = col;
+    ctx.lineWidth = lw * (1 + 0.6 * heat);
+    ctx.beginPath();
+    for (let d = 0; d < D; d++) {
+      if (!tile.edges[d]) continue;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + geo.spokes[d][0], y + geo.spokes[d][1]);
+    }
+    ctx.stroke();
+
+    if (tile.degree > 0) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(0.7, lw * (tile.degree > 2 ? 1.1 : 0.7)), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Loop
+ * ------------------------------------------------------------------ */
+function frame(t) {
+  now = t;
+
+  if (!paused) {
+    if (contradicted) {
+      reset();
+    } else if (open > 0) {
+      carry += cfg.speed;
+      const steps = Math.floor(carry);
+      carry -= steps;
+      for (let s = 0; s < steps && open > 0 && !contradicted; s++) collapseOne();
+      if (open === 0) doneAt = now;
+    } else if (cfg.loop && now - doneAt > 1600 + TRAIL_MS) {
+      reset();
+    }
+  }
+
+  draw();
+  ui.open.textContent = open;
+  ui.back.textContent = backtracks;
+  ui.state.textContent = paused ? 'paused' : open > 0 ? 'collapsing' : 'settled';
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------
+ * UI
+ * ------------------------------------------------------------------ */
+const $ = (id) => document.getElementById(id);
+const ui = {
+  seed: $('mSeed'), open: $('mOpen'), back: $('mBack'),
+  state: $('mState'), tiles: $('mTiles'),
+  panel: $('panel'), pause: $('bPause'),
+  square: $('bSquare'), hex: $('bHex'),
+};
+
+const bind = (slider, label, key, fmt, restart) => {
+  const s = $(slider), v = $(label);
+  const sync = () => {
+    cfg[key] = parseFloat(s.value);
+    v.textContent = fmt(cfg[key]);
+  };
+  s.addEventListener('input', () => {
+    sync();
+    if (restart) reset(); else refreshWeights();
+  });
+  sync();
+};
+
+bind('sGrid', 'vGrid', 'grid', (x) => x + ' × ' + x, true);
+bind('sSpeed', 'vSpeed', 'speed', (x) => x.toFixed(1));
+bind('sBlank', 'vBlank', 'blank', (x) => x.toFixed(1));
+bind('sJunction', 'vJunction', 'junction', (x) => x.toFixed(1));
+bind('sWidth', 'vWidth', 'width', (x) => x.toFixed(1));
+
+const bindCheck = (id, key, restart) => {
+  const el = $(id);
+  el.checked = cfg[key];
+  el.addEventListener('change', () => {
+    cfg[key] = el.checked;
+    if (restart) reset();
+  });
+};
+bindCheck('cSeal', 'seal', true);
+bindCheck('cGhost', 'ghost', false);
+bindCheck('cLoop', 'loop', false);
+
+function setMode(mode) {
+  cfg.mode = mode;
+  ui.square.setAttribute('aria-pressed', String(mode === 'square'));
+  ui.hex.setAttribute('aria-pressed', String(mode === 'hex'));
+  reset();
+}
+ui.square.addEventListener('click', () => setMode('square'));
+ui.hex.addEventListener('click', () => setMode('hex'));
+
+const setPaused = (p) => {
+  paused = p;
+  ui.pause.textContent = paused ? 'Resume' : 'Pause';
+};
+
+$('bRestart').addEventListener('click', () => reset());
+ui.pause.addEventListener('click', () => setPaused(!paused));
+$('toggle').addEventListener('click', () => { ui.panel.hidden = !ui.panel.hidden; });
+
+window.addEventListener('keydown', (ev) => {
+  // Let a focused slider or button keep its own keys (Space activates a button).
+  const tag = ev.target && ev.target.tagName;
+  if (tag === 'INPUT' || tag === 'BUTTON') return;
+  const k = ev.key.toLowerCase();
+  if (k === 'h') ui.panel.hidden = !ui.panel.hidden;
+  else if (k === ' ') { ev.preventDefault(); setPaused(!paused); }
+  else if (k === 'r') reset();
+  else if (k === 'g') setMode(cfg.mode === 'square' ? 'hex' : 'square');
+  else if (k === 'f') {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen?.();
+  }
+});
+
+resize();
+setMode('square');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

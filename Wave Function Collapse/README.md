@@ -1,0 +1,75 @@
+# Wave Function Collapse
+
+[`index.html`](index.html) — a tile map that builds itself. Every cell starts
+out as *every* tile at once; the least certain cell picks one, the choice
+propagates to its neighbours, and the whole grid settles into a pattern that is
+random but never breaks its own rules. Open it in a browser; no dependencies,
+nothing to build.
+
+![A square map mid-collapse next to a hexagonal one](screenshot.jpg)
+
+Two lattices, same algorithm: **square** draws the classic pipe grid, **hexagon**
+runs the identical rules on a honeycomb, where six edges per cell turn the pipes
+into lace. Switch with the buttons or `G`.
+
+## How it works
+
+A tile is nothing but a pattern of pipes leaving through its edges. Two cells
+fit together when the edge they share reads the same on both sides — a pipe
+never runs into a blank wall. That single rule generates the tile set: every
+combination of edges is a tile, minus the ones with a single pipe, because a
+pipe that just stops looks like a mistake. Four edges give 12 tiles, six edges
+give 58.
+
+Each cell holds the set of tiles it could still become. One step of the loop:
+
+1. **Observe** — find the cell with the fewest options left, ties broken at
+   random so the front stays organic rather than sweeping top-left to
+   bottom-right.
+2. **Collapse** — pick one of its tiles, weighted, and throw the rest away.
+3. **Propagate** — a cell only ever tells its neighbour which values the shared
+   edge may still take. If both 0 and 1 are still on the table, nothing is
+   constrained and the neighbour is skipped; otherwise the neighbour loses every
+   tile that disagrees, and the shrinking travels on from there.
+
+Propagation can paint the grid into a corner: a cell whose four neighbours have
+already decided may have no tile left that fits. The solver keeps a trail of
+every removal and a stack of its guesses, so a contradiction rewinds to the last
+guess, drops that tile, and tries the next one. Only when the stack runs dry
+does it give up and reseed.
+
+The gold is the collapse front. A cell is drawn gold the moment it settles and
+cools to off-white over about a second, so the picture shows where the algorithm
+is working, not just what it produced. Cells that are still undecided show a
+ring that tightens as their options run out.
+
+Two smaller details: the border is sealed, so no pipe leaves the grid, which is
+what makes the map read as an object rather than a crop; and the map is drawn
+from a seed, so the same seed always redraws the same map.
+
+## Controls
+
+Press `H` or the ☰ button for the panel.
+
+| Control | What it does |
+| --- | --- |
+| Square / Hexagon | Which lattice to collapse on |
+| Grid | Cells per side |
+| Speed | Collapses per frame |
+| Blanks | How strongly empty tiles are favoured — high leaves islands, 0 fills the grid |
+| Junctions | Weight of tees and crosses, the tiles that make pipes branch |
+| Line width | Thickness of the pipes |
+| Seal the border | Forbid pipes that would leave the grid |
+| Show uncertainty | Draw the undecided cells |
+| Restart when done | Reseed a moment after the map settles |
+
+`Space` pauses, `R` reseeds, `G` swaps the lattice, `F` goes fullscreen. The
+panel also reports the seed, how many cells are still open, and how often the
+solver had to backtrack.
+
+## Origin
+
+Ported from a p5.js sketch of the same idea: a React component with a
+12-tile pipe set on a fixed 16×16 grid. This version drops the framework and p5
+for plain Canvas 2D in one file, and generalises the solver so the lattice —
+four edges or six — is just a parameter.

@@ -10,7 +10,8 @@
 
 Just my creative ideas that I can't put anywhere else. Enjoy.
 
-Mostly self-contained — no build step. Open the HTML file and it runs.
+Mostly self-contained — no build step. Open the HTML file and it runs,
+or try the live versions: **<https://tlausz.github.io/Playground/>**
 
 ## What's in here
 

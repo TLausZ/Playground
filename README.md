@@ -97,8 +97,8 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   <h3><a href="block-cloud/">Block-Cloud</a></h3>
   <p>
     A Bitcoin block as a 3D city: one cube per transaction, sized by how much
-    room it takes in the block and coloured by its fee rate. Pick a block height
-    and watch it build front to back.<br>
+    room it takes in the block and coloured by its fee rate. Type a height, or
+    take one of the presets: the genesis block, the pizza block, the halvings.<br>
     readme: <a href="block-cloud/README.md">/block-cloud/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/block-cloud/">/block-cloud/</a>
   </p>

@@ -4,7 +4,7 @@
 
 ## Struktur
 
-Ein einziges File: `index.html`. Kein Build, keine Dependencies ausser Three.js via CDN-Importmap (v0.166.0). Öffnen im Browser genügt, auch per `file://` — Three.js vom CDN und die mempool.space-API liefern beide `Access-Control-Allow-Origin: *`, ein lokaler Server ist nicht nötig (in Chrome gegengeprüft).
+Ein einziges File: `index.html`. Kein Build, keine Dependencies ausser Three.js via CDN-Importmap (v0.166.0). Öffnen im Browser genügt, auch per `file://`: Three.js vom CDN und die mempool.space-API liefern beide `Access-Control-Allow-Origin: *`, ein lokaler Server ist also nicht nötig (in Chrome gegengeprüft).
 
 ## Wie es funktioniert
 

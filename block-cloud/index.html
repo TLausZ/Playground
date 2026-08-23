@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block-Cloud</title>
+<style>
+  :root {
+    --cream: #F7F1E3; --beige: #E8DCC4; --sand: #D9C7A0;
+    --brown: #8C6B4F; --dark: #4E3B2A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--cream); color: var(--dark);
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+    padding: .7rem 1rem; background: var(--beige);
+    border-bottom: 1px solid var(--sand);
+  }
+  h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+  form { display: flex; gap: .4rem; }
+  input {
+    width: 9rem; padding: .35rem .5rem; border: 1px solid var(--sand);
+    border-radius: 4px; background: var(--cream); color: var(--dark);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  input:focus { outline: 1px solid var(--brown); }
+  button {
+    padding: .35rem .8rem; border: none; border-radius: 4px;
+    background: var(--brown); color: var(--cream); cursor: pointer;
+  }
+  button:hover { background: var(--dark); }
+  select {
+    padding: .35rem .5rem; border: 1px solid var(--sand); border-radius: 4px;
+    background: var(--cream); color: var(--dark); font-family: inherit; cursor: pointer;
+  }
+  #presets { display: flex; gap: .3rem; flex-wrap: wrap; }
+  #presets button {
+    background: var(--cream); color: var(--dark); border: 1px solid var(--sand);
+    padding: .25rem .55rem; font-size: .8rem;
+  }
+  #presets button:hover { background: var(--beige); }
+  #presets small {
+    display: block; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: .65rem; opacity: .7;
+  }
+  #info, #status {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85rem;
+  }
+  #info { white-space: pre-line; line-height: 1.4; }
+  #infobar {
+    position: absolute; top: .5rem; left: 1rem; z-index: 1;
+    padding: .5rem .8rem; border: 1px solid var(--sand); border-radius: 4px;
+    background: rgba(232, 220, 196, 0.7); /* beige, 30% transparent */
+    pointer-events: none;
+  }
+  #status:empty { display: none; }
+  main { flex: 1; min-height: 0; position: relative; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Block-Cloud</h1>
+  <form id="form">
+    <input id="height" type="number" min="0" step="1" placeholder="Blockhöhe" required>
+    <button type="submit">Anzeigen</button>
+  </form>
+  <select id="view">
+    <option value="cubes">Würfel</option>
+    <option value="rings">Ringe</option>
+  </select>
+  <nav id="presets">
+    <button data-h="0" title="Genesis-Block, 3. Januar 2009">Genesis</button>
+    <button data-h="170" title="Erste Bitcoin-Transaktion: Satoshi an Hal Finney, 12. Januar 2009">Erste Tx</button>
+    <button data-h="57043" title="Pizza-Block: 10'000 BTC für zwei Pizzen, 22. Mai 2010">Pizza</button>
+    <button data-h="210000" title="Erstes Halving, 28. November 2012">Halving 1</button>
+    <button data-h="420000" title="Zweites Halving, 9. Juli 2016">Halving 2</button>
+    <button data-h="630000" title="Drittes Halving, 11. Mai 2020">Halving 3</button>
+    <button data-h="666666" title="Block 666'666 mit Bibelvers-Transaktion (Römer 12,21)">Beast</button>
+    <button data-h="840000" title="Viertes Halving, 20. April 2024">Halving 4</button>
+    <button data-h="879613" title="MARA «Trump 47»: Trump-Porträt als Block-Art zur Amtseinführung, 20. Januar 2025">Trump 47</button>
+    <button data-h="tip" title="Aktuellster Block (Tip Height)">Aktuell</button>
+  </nav>
+</header>
+<main>
+  <div id="infobar">
+    <span id="info"></span>
+    <span id="status"></span>
+  </div>
+  <canvas id="c"></canvas>
+</main>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.166.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const API = 'https://mempool.space/api';
+const SIDE = 100; // Kantenlänge der Grundfläche (wie die 2D-Blockansicht)
+const info = document.getElementById('info');
+const status = document.getElementById('status');
+const input = document.getElementById('height');
+
+// --- Szene ---------------------------------------------------------------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#F7F1E3');
+scene.fog = new THREE.Fog('#F7F1E3', 150, 380);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
+camera.position.set(0, 105, -100); // 45° von oben gekippt
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 6, 0);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.4;
+controls.maxPolarAngle = Math.PI / 2 - 0.02; // nicht unter den Boden
+
+scene.add(new THREE.HemisphereLight(0xfffaf0, 0x8C6B4F, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(60, 100, 40);
+scene.add(sun);
+
+let group = null; // aktuelle Würfel + Kanten
+let anim = null;  // laufende Aufbau-Animation
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+// Aufbau-Animation: Würfel wachsen von vorne nach hinten, total ~1000ms
+const animM = new THREE.Matrix4();
+function updateAnim() {
+  if (!anim) return;
+  const t = performance.now() - anim.t0;
+  anim.parts.forEach((p, i) => {
+    const k = Math.min(1, Math.max(0, (t - p.delay) / 200));
+    const e = 1 - (1 - k) ** 3; // ease-out
+    const s = Math.max(p.s * e, 1e-4), h = Math.max(p.hgt * e, 1e-4);
+    animM.makeScale(s, h, s);
+    animM.setPosition(p.cx, h / 2, p.cz);
+    anim.boxes.setMatrixAt(i, animM);
+  });
+  anim.boxes.instanceMatrix.needsUpdate = true;
+  anim.edgeMat.opacity = 0.55 * Math.min(1, Math.max(0, (t - 600) / 400));
+  if (t > 1100) anim = null;
+}
+
+// Ring-Aufbau: Ringe wachsen von innen nach aussen, total ~1000ms
+function updateRingAnim() {
+  if (!ringAnim) return;
+  const t = performance.now() - ringAnim.t0;
+  for (const p of ringAnim.parts) {
+    const k = Math.min(1, Math.max(0, (t - p.delay) / 200));
+    p.mesh.scale.setScalar(Math.max(1 - (1 - k) ** 3, 1e-4)); // ease-out
+  }
+  if (t > 1100) ringAnim = null;
+}
+
+renderer.setAnimationLoop(() => {
+  updateAnim();
+  updateRingAnim();
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// --- Packing der mempool-Blockansicht ------------------------------------
+// Port von BlockLayout aus mempool/frontend block-scene.ts (AGPL):
+// Grid aus ganzen Zellen, jede Tx ein Quadrat von `size` Zellen, platziert
+// in der tiefsten Reihe mit passender Lücke (füllt Löcher wieder auf).
+const RES = 86;                    // Grid-Auflösung wie mempool desktop
+const VB_PER_UNIT = 1_000_000 / ((RES / 1.02) ** 2);
+
+class Slot {
+  constructor(l, r) { this.l = l; this.r = r; }
+  intersects(s) { return !(s.r <= this.l || s.l >= this.r); }
+  subtract(s) {
+    if (!this.intersects(s)) return [this];
+    if (s.l > this.l && s.r < this.r) return [new Slot(this.l, s.l), new Slot(s.r, this.r)];
+    if (s.l <= this.l && s.r >= this.r) return [];
+    if (s.l <= this.l) return s.r === this.r ? [] : [new Slot(s.r, this.r)];
+    return s.l === this.l ? [] : [new Slot(this.l, s.l)];
+  }
+}
+
+class Row {
+  constructor(width) { this.slots = [new Slot(0, width)]; }
+  insert(x, w) {
+    const ns = new Slot(x, x + w);
+    for (let i = 0; i < this.slots.length; i++) {
+      if (ns.intersects(this.slots[i])) {
+        const diff = this.slots[i].subtract(ns);
+        this.slots.splice(i, 1, ...diff);
+        i += diff.length - 1;
+      }
+    }
+  }
+}
+
+class BlockLayout {
+  constructor(width) { this.width = width; this.rows = [new Row(width)]; }
+  findFit(left, right, row, start, size) {
+    if (row - start >= size || row >= this.rows.length) return { x: left, y: start };
+    for (const slot of this.rows[row].slots) {
+      const l = Math.max(left, slot.l), r = Math.min(right, slot.r);
+      if (r - l >= size) {
+        const fit = this.findFit(l, r, row + 1, start, size);
+        if (fit) return fit;
+      }
+    }
+  }
+  insert(size) {
+    let fit;
+    for (let y = 0; y < this.rows.length && !fit; y++) fit = this.findFit(0, this.width, y, y, size);
+    if (!fit) fit = { x: 0, y: this.rows.length };
+    for (let y = fit.y; y < fit.y + size; y++) {
+      if (y >= this.rows.length) this.rows.push(new Row(this.width));
+      this.rows[y].insert(fit.x, size);
+    }
+    return fit;
+  }
+}
+
+// --- Feerate-Farben (beide Ansichten) ------------------------------------
+// Skala wie mempool.space (grün → gelb → orange → rot), helle Töne
+const stops = ['#AED581', '#FFF176', '#FFB74D', '#EF5350'].map((c) => new THREE.Color(c));
+const tint = new THREE.Color();
+const colorAt = (t) => {
+  const p = t * (stops.length - 1), i = Math.min(Math.floor(p), stops.length - 2);
+  return tint.lerpColors(stops[i], stops[i + 1], p - i);
+};
+// t aus rate: log-skaliert, pro Block normalisiert (5.–95. Perzentil)
+function feeTints(items) {
+  const logs = items.map((it) => Math.log2(1 + it.rate)).sort((a, b) => a - b);
+  const lo = logs[Math.floor(logs.length * 0.05)];
+  const hi = Math.max(logs[Math.floor(logs.length * 0.95)], lo + 0.01);
+  for (const it of items) {
+    it.t = Math.min(1, Math.max(0, (Math.log2(1 + it.rate) - lo) / (hi - lo)));
+  }
+}
+
+// --- Solide Würfel: 2D-Blockansicht nach oben extrudiert -----------------
+function buildCubes(txs) {
+  // Block-Reihenfolge beibehalten — der Miner sortiert faktisch nach Feerate
+  const cell = SIDE / RES;
+  const layout = new BlockLayout(RES);
+  const items = txs.map((t) => {
+    const size = Math.min(RES, Math.max(1, Math.round(Math.sqrt(1.1 * t.vsize / VB_PER_UNIT))));
+    const fit = layout.insert(size);
+    return {
+      side: size * cell,
+      x: (RES - size - fit.x) * cell, // x gespiegelt: Kamera schaut von -z auf das Grid
+      y: fit.y * cell,
+      // rohe Feerate wie die mempool-Farben (das rate-Feld ist die effektive
+      // Rate und bügelt z.B. die Bild-Blöcke von MARA glatt)
+      rate: t.vsize > 0 ? t.fee / t.vsize : 0,
+    };
+  });
+  // ponytail: Selbsttest — keine Überlappung der ersten 300 Quadrate
+  console.assert(
+    items.slice(0, 300).every((a, i) => items.slice(0, i).every((b) =>
+      a.x + a.side <= b.x + 1e-6 || b.x + b.side <= a.x + 1e-6 ||
+      a.y + a.side <= b.y + 1e-6 || b.y + b.side <= a.y + 1e-6)),
+    'Packing überlappt'
+  );
+
+  // Echte Würfel: Höhe = Kantenlänge der Grundfläche (vsize bestimmt alle
+  // drei Dimensionen — grosse Transaktionen sind in jeder Richtung gross)
+  for (const it of items) it.hgt = it.side;
+
+  feeTints(items);
+  const depth = Math.max(...items.map((it) => it.y + it.side)); // Packhöhe
+
+  // Alle Würfel als eine InstancedMesh, alle Kanten als ein LineSegments
+  const boxMat = new THREE.MeshLambertMaterial({
+    transparent: true, opacity: 0.85, // 15% transparent; Farbe pro Instanz
+  });
+  const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), boxMat, items.length);
+  const m = new THREE.Matrix4();
+  const edgePos = [];
+  // 12 Kanten eines Einheitswürfels als Eckpunkt-Paare
+  const C = [[0,0,0],[1,0,0],[1,0,1],[0,0,1],[0,1,0],[1,1,0],[1,1,1],[0,1,1]];
+  const E = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  const parts = [];
+  items.forEach((it, i) => {
+    const pad = Math.min(0.25, it.side * 0.1); // sichtbare Fugen
+    const s = it.side - 2 * pad;
+    const x0 = it.x + pad - SIDE / 2, z0 = it.y + pad - depth / 2;
+    // Startzustand: Grösse 0, die Animation wächst von vorne (it.y klein) nach hinten
+    parts.push({ s, hgt: it.hgt, cx: x0 + s / 2, cz: z0 + s / 2, delay: (it.y / depth) * 800 });
+    m.makeScale(1e-4, 1e-4, 1e-4);
+    m.setPosition(x0 + s / 2, 0, z0 + s / 2);
+    boxes.setMatrixAt(i, m);
+    boxes.setColorAt(i, colorAt(it.t));
+    for (const [a, b] of E) {
+      edgePos.push(
+        x0 + C[a][0] * s, C[a][1] * it.hgt, z0 + C[a][2] * s,
+        x0 + C[b][0] * s, C[b][1] * it.hgt, z0 + C[b][2] * s
+      );
+    }
+  });
+  const edgeGeo = new THREE.BufferGeometry();
+  edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3));
+  const edgeMat = new THREE.LineBasicMaterial({ color: '#8C6B4F', transparent: true, opacity: 0 });
+  const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+  anim = { t0: performance.now(), boxes, parts, edgeMat };
+
+  if (group) {
+    scene.remove(group);
+    group.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+  }
+  group = new THREE.Group();
+  group.add(boxes, edges);
+  scene.add(group);
+}
+
+// --- Radialer Treemap: Ringe von innen (hohe Feerate) nach aussen --------
+// Fläche jedes Ringsegments proportional zur vsize; Blockreihenfolge wird
+// zur Radialposition, der Low-Fee-Teppich landet als feine Aussenringe.
+const viewSel = document.getElementById('view');
+let lastTxs = null, ringGroup = null, ringAnim = null;
+
+function ringLayout(txs) {
+  const items = txs.map((t) => ({
+    a: Math.max(t.vsize, 1),
+    rate: t.vsize > 0 ? t.fee / t.vsize : 0,
+  }));
+  feeTints(items);
+  // Radialposition = Feerate-Rang (Blockreihenfolge ist fast identisch, aber
+  // die Coinbase stünde sonst als Ausreisser an erster Stelle)
+  items.sort((x, y) => y.rate - x.rate);
+  const total = items.reduce((sum, it) => sum + it.a, 0);
+  const r0 = Math.sqrt(Math.max(...items.map((it) => it.a))) * 0.5; // Loch in der Mitte
+  const out = [];
+  let r = r0, ring = 0, i = 0;
+  while (i < items.length) {
+    // Ringdicke: grösste Tx, die noch in diesen Ring kommt (Bogenlänge ≈ Dicke,
+    // Zellen etwa quadratisch), Lookahead bis zur Ringkapazität. Gedeckelt,
+    // sonst saugt eine Riesen-Tx den ganzen Block in einen einzigen Ring
+    // (Kapazität wächst mit d²); ihre Zellen werden dann breit statt dick.
+    const dCap = Math.sqrt(total / Math.PI) / 6;
+    let d = Math.min(Math.sqrt(items[i].a), dCap);
+    let A = 0, j = i;
+    for (; j < items.length && A < 2 * Math.PI * (r + d / 2) * d; j++) {
+      d = Math.max(d, Math.min(Math.sqrt(items[j].a), dCap));
+      A += items[j].a;
+    }
+    // Restring: füllt der Rest keinen vollen Ring, Dicke so wählen, dass die
+    // Restfläche genau 2π ergibt (dünner Vollring statt herausragender Arm)
+    if (j === items.length) d = Math.min(d, Math.sqrt(r * r + A / Math.PI) - r);
+    // Riesen-Tx, die allein nicht in 2π passt: eigener flächentreuer Vollring
+    if (items[i].a > 2 * Math.PI * (r + d / 2) * d) d = Math.sqrt(r * r + items[i].a / Math.PI) - r;
+    // Füllen: d ist nur Gruppierungs-Heuristik (wie viele Txs in den Ring)
+    const rm = r + d / 2;
+    const start = out.length;
+    let sum = 0, Aring = 0;
+    while (i < items.length) {
+      const th = items[i].a / (rm * d);
+      if (out.length > start && sum + th > 2 * Math.PI) break;
+      out.push({ a: items[i].a, t: items[i].t });
+      sum += th; Aring += items[i].a; i++;
+    }
+    // Endgeometrie exakt: Dicke aus der tatsächlichen Ringfläche, Winkel als
+    // Flächenanteile — jedes Segment ist damit flächentreu. Startwinkel pro
+    // Ring um den goldenen Winkel versetzt, damit die Fugen nicht fluchten.
+    const dx = Math.sqrt(r * r + Aring / Math.PI) - r;
+    let ang = ring * 2.39996;
+    for (let jj = start; jj < out.length; jj++) {
+      out[jj].r1 = r; out[jj].r2 = r + dx;
+      out[jj].a1 = ang; ang += 2 * Math.PI * out[jj].a / Aring; out[jj].a2 = ang;
+    }
+    r += dx; ring++;
+  }
+  // ponytail: Selbsttest — jede Tx wird zu genau einem Segment
+  console.assert(out.length === items.length, 'Ring-Layout verliert Txs');
+  return out;
+}
+
+// 3D: Segmente als extrudierte Donut-Stücke, Höhe = Ringdicke (Zikkurat:
+// hohe Feerate-Türme im Zentrum, flacher Low-Fee-Rand). Pro Ring eine
+// gemergte Geometrie — wenige Draw-Calls, und die Aufbau-Animation kann
+// den ganzen Ring skalieren.
+const ringMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.85 });
+const ringEdgeMat = new THREE.LineBasicMaterial({ color: '#8C6B4F', transparent: true, opacity: 0.55 });
+
+function buildRings(txs) {
+  const segsAll = ringLayout(txs);
+  const Rmax = segsAll[segsAll.length - 1].r2;
+  const s = 65 / Rmax; // Weltmassstab: Disc etwas grösser als die Würfelstadt-Hälfte
+  const byRing = new Map();
+  for (const g of segsAll) {
+    if (!byRing.has(g.r1)) byRing.set(g.r1, []);
+    byRing.get(g.r1).push(g);
+  }
+  ringGroup = new THREE.Group();
+  ringAnim = { t0: performance.now(), parts: [] };
+  let ringIdx = 0;
+  for (const list of byRing.values()) {
+    const geos = [];
+    const off = ringIdx++ * 1.2; // Explosion: Ringe radial auseinandergezogen
+    for (const g of list) {
+      const r1 = g.r1 * s + off, r2 = g.r2 * s + off;
+      const pr = Math.min(0.4, (r2 - r1) * 0.3);              // radiale Fuge
+      const pa = Math.min(0.4 / ((r1 + r2) / 2), (g.a2 - g.a1) * 0.3); // Winkel-Fuge
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, r2 - pr, g.a1 + pa, g.a2 - pa, false);
+      shape.absarc(0, 0, r1 + pr, g.a2 - pa, g.a1 + pa, true);
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: r2 - r1, bevelEnabled: false,
+        curveSegments: Math.max(2, Math.ceil((g.a2 - g.a1) * 8)), // Sehnen ~7°
+      });
+      const col = colorAt(g.t);
+      const n = geo.attributes.position.count;
+      const cols = new Float32Array(n * 3);
+      for (let k = 0; k < n; k++) cols.set([col.r, col.g, col.b], k * 3);
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      geos.push(geo);
+    }
+    const merged = mergeGeometries(geos);
+    for (const geo of geos) geo.dispose();
+    const mesh = new THREE.Mesh(merged, ringMat);
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(merged, 30), ringEdgeMat));
+    mesh.rotation.x = -Math.PI / 2; // Extrusion zeigt nach oben
+    mesh.scale.setScalar(1e-4);
+    ringGroup.add(mesh);
+    ringAnim.parts.push({ mesh, delay: (list[0].r1 * s / 65) * 800 });
+  }
+  scene.add(ringGroup);
+}
+
+function disposeRings() {
+  if (!ringGroup) return;
+  scene.remove(ringGroup);
+  ringGroup.traverse((o) => o.geometry?.dispose());
+  ringGroup = null;
+  ringAnim = null;
+}
+
+function show() {
+  const rings = viewSel.value === 'rings';
+  if (rings && !ringGroup && lastTxs) buildRings(lastTxs);
+  if (ringGroup) ringGroup.visible = rings;
+  if (group) group.visible = !rings;
+}
+viewSel.addEventListener('change', show);
+
+// --- Daten ---------------------------------------------------------------
+async function get(url, asJson) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(await r.text() || r.statusText);
+  return asJson ? r.json() : r.text();
+}
+
+async function loadBlock(height) {
+  status.textContent = 'Lade Block…';
+  info.textContent = '';
+  try {
+    const hash = await get(`${API}/block-height/${height}`);
+    const block = await get(`${API}/v1/block/${hash}`, true); // v1: mit extras (Fees, Pool, Coinbase)
+    const txs = await get(`${API}/v1/block/${hash}/summary`, true);
+    lastTxs = txs;
+    disposeRings();
+    buildCubes(txs);
+    show();
+    const d = new Date(block.timestamp * 1000);
+    const x = block.extras;
+    const btc = (sats, dig) => (sats / 1e8).toLocaleString('de-CH', { maximumFractionDigits: dig });
+    // kleine Feerates nicht auf 0 wegrunden (Median kann z.B. 0.54 sat/vB sein)
+    const rate = (v) => v.toLocaleString('de-CH', { maximumFractionDigits: v < 10 ? 2 : 0 });
+    const fr = x.feeRange || [];
+    // Coinbase-ScriptSig: druckbare ASCII-Zeichen als Miner-Botschaft
+    const cb = (x.coinbaseRaw.match(/../g) || [])
+      .map((h) => { const c = parseInt(h, 16); return c >= 32 && c < 127 ? String.fromCharCode(c) : ' '; })
+      .join('').replace(/\s+/g, ' ').trim();
+    info.textContent = [
+      [
+        `Block ${block.height.toLocaleString('de-CH')}`,
+        `${block.tx_count.toLocaleString('de-CH')} Transaktionen`,
+        `${(block.size / 1e6).toFixed(2).replace('.', ',')} MB`,
+        d.toLocaleString('de-CH', { dateStyle: 'medium', timeStyle: 'short' }),
+      ].join(' ║ '),
+      [
+        `${btc(x.totalOutputAmt, 2)} BTC bewegt`,
+        `Gebühren ${btc(x.totalFees, 4)} BTC`,
+        fr.length ? `${rate(fr[0])}–${rate(fr[fr.length - 1])} sat/vB` : null,
+        `Median ${rate(x.medianFee)} sat/vB`,
+      ].filter(Boolean).join(' ║ '),
+      [
+        x.pool?.name,
+        cb ? `«${cb.length > 90 ? cb.slice(0, 90) + '…' : cb}»` : null,
+      ].filter(Boolean).join(' ║ '),
+    ].join('\n');
+    status.textContent = '';
+  } catch (e) {
+    status.textContent = `Fehler: ${e.message}`;
+  }
+}
+
+document.getElementById('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  loadBlock(input.value);
+});
+
+// zweite Buttonzeile: Blockhöhe
+for (const b of document.querySelectorAll('#presets button')) {
+  const s = document.createElement('small');
+  s.textContent = b.dataset.h === 'tip' ? '…' : (+b.dataset.h).toLocaleString('de-CH');
+  b.append(s);
+}
+
+document.getElementById('presets').addEventListener('click', async (e) => {
+  let h = e.target.closest('button')?.dataset.h; // Klick kann das <small> treffen
+  if (h === 'tip') {
+    try { h = await get(`${API}/blocks/tip/height`); }
+    catch (err) { status.textContent = `Fehler: ${err.message}`; return; }
+    e.target.closest('button').querySelector('small').textContent = (+h).toLocaleString('de-CH');
+  }
+  input.value = h;
+  loadBlock(h);
+});
+
+// Beim Start: aktuellster Block
+get(`${API}/blocks/tip/height`)
+  .then((h) => {
+    input.value = h;
+    document.querySelector('#presets [data-h="tip"] small').textContent = (+h).toLocaleString('de-CH');
+    return loadBlock(h);
+  })
+  .catch((e) => { status.textContent = `Fehler: ${e.message}`; });
+</script>
+</body>
+</html>

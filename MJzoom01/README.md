@@ -1,6 +1,6 @@
 # Whackaddodle MJ zoom
 
-[![The whole move at 3.5× speed](preview.webp)](https://tlausz.github.io/Playground/MJzoom01/)
+[![The first seconds of the move, at 3.5× speed](preview.webp)](https://tlausz.github.io/Playground/MJzoom01/)
 
 Twelve Midjourney frames, each one zoomed out from the last, stitched back
 together into a single continuous camera move. The film runs out to the widest

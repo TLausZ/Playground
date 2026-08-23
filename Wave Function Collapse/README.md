@@ -6,11 +6,12 @@ propagates to its neighbours, and the whole grid settles into a pattern that is
 random but never breaks its own rules. Open it in a browser; no dependencies,
 nothing to build.
 
-![A square map mid-collapse next to a hexagonal one](screenshot.jpg)
+![A square map, a hexagonal one and the globe, all mid-collapse](screenshot.jpg)
 
-Two lattices, same algorithm: **square** draws the classic pipe grid, **hexagon**
-runs the identical rules on a honeycomb, where six edges per cell turn the pipes
-into lace. Switch with the buttons or `G`.
+Three lattices, same algorithm: **square** draws the classic pipe grid,
+**hexagon** runs the identical rules on a honeycomb, where six edges per cell
+turn the pipes into lace, and **sphere** wraps the whole thing around a globe
+you can spin. Switch with the buttons or `G`.
 
 ## How it works
 
@@ -18,8 +19,8 @@ A tile is nothing but a pattern of pipes leaving through its edges. Two cells
 fit together when the edge they share reads the same on both sides — a pipe
 never runs into a blank wall. That single rule generates the tile set: every
 combination of edges is a tile, minus the ones with a single pipe, because a
-pipe that just stops looks like a mistake. Four edges give 12 tiles, six edges
-give 58.
+pipe that just stops looks like a mistake. Four edges give 12 tiles, five give
+27, six give 58.
 
 Each cell holds the set of tiles it could still become. One step of the loop:
 
@@ -47,23 +48,46 @@ Two smaller details: the border is sealed, so no pipe leaves the grid, which is
 what makes the map read as an object rather than a crop; and the map is drawn
 from a seed, so the same seed always redraws the same map.
 
+## The sphere
+
+A sphere cannot be tiled with hexagons alone. Euler's formula leaves exactly
+twelve pentagons no matter how fine the mesh gets — the same twelve a football
+has. So the globe mixes both, and the pentagons each draw from their own set of
+27 tiles.
+
+The cells are the vertices of a subdivided icosahedron: the twelve original
+corners keep five neighbours, everything else gets six. Building it that way
+means the solver has to give up two assumptions that hold on a flat grid — that
+every cell has the same number of edges, and that the edge facing back is always
+the opposite one. There is no "opposite" on a sphere, so every edge stores which
+edge of its neighbour it meets. With that pairing in hand the observe-propagate
+loop is unchanged; it never learns which lattice it is running on.
+
+Points shared between two faces of the icosahedron are matched by integer
+barycentric coordinates rather than by rounded floats, so neighbouring faces
+really agree on a cell instead of leaving a hairline seam.
+
+Pipes are drawn as short arcs following the surface. The far side shows through
+faintly and cells dim towards the limb, which is what makes it read as a ball
+rather than a disc. Drag to turn it; it drifts on its own otherwise.
+
 ## Controls
 
 Press `H` or the ☰ button for the panel.
 
 | Control | What it does |
 | --- | --- |
-| Square / Hexagon | Which lattice to collapse on |
-| Grid | Cells per side |
+| Square / Hexagon / Sphere | Which lattice to collapse on |
+| Grid, Subdivision | Cells per side, or how often the icosahedron is split |
 | Speed | Collapses per frame |
 | Blanks | How strongly empty tiles are favoured — high leaves islands, 0 fills the grid |
 | Junctions | Weight of tees and crosses, the tiles that make pipes branch |
 | Line width | Thickness of the pipes |
-| Seal the border | Forbid pipes that would leave the grid |
+| Seal the border | Forbid pipes that would leave the grid (a sphere has no border) |
 | Show uncertainty | Draw the undecided cells |
 | Restart when done | Reseed a moment after the map settles |
 
-`Space` pauses, `R` reseeds, `G` swaps the lattice, `F` goes fullscreen. The
+`Space` pauses, `R` reseeds, `G` cycles the lattice, `F` goes fullscreen. The
 panel also reports the seed, how many cells are still open, and how often the
 solver had to backtrack.
 
@@ -71,5 +95,5 @@ solver had to backtrack.
 
 Ported from a p5.js sketch of the same idea: a React component with a
 12-tile pipe set on a fixed 16×16 grid. This version drops the framework and p5
-for plain Canvas 2D in one file, and generalises the solver so the lattice —
-four edges or six — is just a parameter.
+for plain Canvas 2D in one file, and generalises the solver until the lattice —
+flat or wrapped around a globe, four edges or five or six — is just a parameter.

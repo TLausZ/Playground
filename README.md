@@ -25,7 +25,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     <strong><a href="Pool%20Caustics/">Pool Caustics</a></strong><br>
     The light reflections drifting across a swimming pool surface,
     recreated in a single HTML file.<br>
-    <a href="https://tlausz.github.io/Playground/Pool%20Caustics/">tlausz.github.io/Playground/Pool Caustics/</a>
+    <a href="https://tlausz.github.io/Playground/Pool%20Caustics/">tlausz.github.io/…/Pool Caustics/</a>
   </p>
 </td>
 <td width="45%" valign="top">
@@ -35,7 +35,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   <p>
     <strong><a href="MJzoom01/">Whackaddodle MJ zoom</a></strong><br>
     Midjourney zoom-out steps stitched back into one continuous camera move.<br>
-    <a href="https://tlausz.github.io/Playground/MJzoom01/">tlausz.github.io/Playground/MJzoom01/</a>
+    <a href="https://tlausz.github.io/Playground/MJzoom01/">tlausz.github.io/…/MJzoom01/</a>
   </p>
 </td>
 </tr>
@@ -49,7 +49,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     A tile map that builds itself: the least certain cell picks a tile, the
     constraint propagates, and the grid settles — on squares, on hexagons, or
     wrapped around a globe.<br>
-    <a href="https://tlausz.github.io/Playground/Wave%20Function%20Collapse/">tlausz.github.io/Playground/Wave Function Collapse/</a>
+    <a href="https://tlausz.github.io/Playground/Wave%20Function%20Collapse/">tlausz.github.io/…/Wave Function Collapse/</a>
   </p>
 </td>
 </tr>
@@ -65,7 +65,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     opens and folds back. Squares hinge at a corner, circles where they touch;
     the area underneath traces every rotation, so the overlaps darken toward
     the centre.<br>
-    <a href="https://tlausz.github.io/Playground/bitcoin-halving-animation/">tlausz.github.io/Playground/bitcoin-halving-animation/</a>
+    <a href="https://tlausz.github.io/Playground/bitcoin-halving-animation/">tlausz.github.io/…/bitcoin-halving-animation/</a>
   </p>
 </td>
 </tr>

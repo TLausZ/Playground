@@ -19,7 +19,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 <tr>
 <td width="55%" valign="top">
   <a href="Pool%20Caustics/">
-    <img src="Pool%20Caustics/screenshot.jpg" alt="Pool Caustics">
+    <img src="Pool%20Caustics/preview.webp" alt="Pool Caustics">
   </a>
   <h3><a href="Pool%20Caustics/">Pool Caustics</a></h3>
   <p>
@@ -31,7 +31,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 </td>
 <td width="45%" valign="top">
   <a href="MJzoom01/">
-    <img src="MJzoom01/TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_2.png" alt="Whackaddodle MJ zoom">
+    <img src="MJzoom01/preview.webp" alt="Whackaddodle MJ zoom">
   </a>
   <h3><a href="MJzoom01/">Whackaddodle MJ zoom</a></h3>
   <p>
@@ -44,7 +44,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 <tr>
 <td colspan="2" valign="top">
   <a href="Wave%20Function%20Collapse/">
-    <img src="Wave%20Function%20Collapse/screenshot.jpg" alt="Wave Function Collapse">
+    <img src="Wave%20Function%20Collapse/preview.webp" alt="Wave Function Collapse">
   </a>
   <h3><a href="Wave%20Function%20Collapse/">Wave Function Collapse</a></h3>
   <p>
@@ -59,8 +59,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 <tr>
 <td colspan="2" valign="top">
   <a href="bitcoin-halving-animation/">
-    <img src="bitcoin-halving-animation/screenshot-squares.jpg" alt="Bitcoin Halving Animation, squares scene" width="49%">
-    <img src="bitcoin-halving-animation/screenshot-circles.jpg" alt="Bitcoin Halving Animation, circles scene" width="49%">
+    <img src="bitcoin-halving-animation/preview.webp" alt="Bitcoin Halving Animation">
   </a>
   <h3><a href="bitcoin-halving-animation/">Bitcoin Halving Animation</a></h3>
   <p>
@@ -76,7 +75,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 <tr>
 <td colspan="2" valign="top">
   <a href="collatz-visualizer/">
-    <img src="collatz-visualizer/docs/all-view.png" alt="Collatz Visualizer">
+    <img src="collatz-visualizer/preview.webp" alt="Collatz Visualizer">
   </a>
   <h3><a href="collatz-visualizer/">Collatz Visualizer</a></h3>
   <p>

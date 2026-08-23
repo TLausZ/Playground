@@ -63,6 +63,13 @@ the opposite one. There is no "opposite" on a sphere, so every edge stores which
 edge of its neighbour it meets. With that pairing in hand the observe-propagate
 loop is unchanged; it never learns which lattice it is running on.
 
+The very first step of the subdivision slider is a special case. Subdividing
+gives 10f²+2 cells — 42, 92, 162 — so the 32 of a real football are not in that
+series at all. A football is the icosahedron truncated rather than subdivided:
+its cells are the twelve corners plus the twenty face centres, a corner meeting
+the five faces around it and a centre meeting its three corners and three
+sibling centres. Same five-or-six neighbours, so the solver never notices.
+
 Points shared between two faces of the icosahedron are matched by integer
 barycentric coordinates rather than by rounded floats, so neighbouring faces
 really agree on a cell instead of leaving a hairline seam.
@@ -71,6 +78,32 @@ Pipes are drawn as short arcs following the surface. The far side shows through
 faintly and cells dim towards the limb, which is what makes it read as a ball
 rather than a disc. Drag to turn it; it drifts on its own otherwise.
 
+## Taking the ball apart
+
+Turn **Lift** up and the globe comes apart into the shapes its own pipes cut
+out. A shape is whatever the pipes enclose: mostly irregular, running across as
+many cells as the pipes let it, and at its smallest a single triangle between
+three junctions. Bigger shapes sink towards the centre, smaller ones rise, on a
+log scale, because one shape can cover half the globe while two dozen others are
+corner triangles and spreading those by their raw size would flatten every
+triangle onto one value.
+
+Finding the shapes takes union-find and nothing else. Each cell is cut into
+wedges, one per corner. A pipe leaving through an edge walls off the two wedges
+either side of it, but the edge itself is never a wall: a pipe only reaches as
+far as the edge midpoint, so both halves of the edge stay open and a shape
+wraps round the corner into the next cell. Two checks pin the rule down. A
+globe with no pipes at all has to come out as one shape, and one where every
+edge carries a pipe has to give a triangle per corner, which on a sphere is
+2n-4 of them.
+
+Wedges also settle the question of how a shape spanning several cells can sit
+on a curved surface: each wedge is projected on its own, so the shape bends
+along the cell edges it crosses instead of having to stay flat. The pipes fade
+out as the lift comes up, since a pipe between two shapes at different heights
+has two places it could be; each shape then draws its own edge at its own
+radius, which turns the seam into a visible step.
+
 ## Controls
 
 Press `H` or the ☰ button for the panel.
@@ -78,11 +111,12 @@ Press `H` or the ☰ button for the panel.
 | Control | What it does |
 | --- | --- |
 | Square / Hexagon / Sphere | Which lattice to collapse on |
-| Grid, Subdivision | Cells per side, or how often the icosahedron is split |
+| Grid, Subdivision | Cells per side, or how often the icosahedron is split; the lowest step on the sphere is the 32-cell football |
 | Speed | Collapses per frame |
 | Blanks | How strongly empty tiles are favoured — high leaves islands, 0 fills the grid |
 | Junctions | Weight of tees and crosses, the tiles that make pipes branch |
 | Line width | Thickness of the pipes |
+| Lift | How far the shapes ride off the sphere, by their size (sphere only) |
 | Seal the border | Forbid pipes that would leave the grid (a sphere has no border) |
 | Show uncertainty | Draw the undecided cells |
 | Restart when done | Reseed a moment after the map settles |

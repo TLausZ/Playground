@@ -101,7 +101,7 @@
 
   .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; cursor: pointer; }
   .check input { accent-color: var(--ui-accent); width: 15px; height: 15px; margin: 0; }
-  .check.off { opacity: .35; cursor: default; }
+  .check.off, .row.off { opacity: .35; cursor: default; }
   .seg button { flex: 1 1 0; min-width: 0; }
 
   .buttons { display: flex; gap: 7px; margin-top: 12px; }
@@ -159,6 +159,7 @@
     <input type="range" id="sWidth" min="0.3" max="3" step="0.1" value="1">
   </div>
 
+  <label class="check" id="wLift"><input type="checkbox" id="cLift"> Lift the shapes</label>
   <label class="check" id="wSeal"><input type="checkbox" id="cSeal" checked> Seal the border</label>
   <label class="check"><input type="checkbox" id="cGhost" checked> Show uncertainty</label>
   <label class="check"><input type="checkbox" id="cLoop" checked> Restart when done</label>
@@ -246,6 +247,7 @@ const cfg = {
   blank: 4,
   junction: 1,
   width: 1,
+  lift: false, // pull the shapes off the sphere, by their size
   seal: true,
   ghost: true,
   loop: true,
@@ -322,6 +324,10 @@ function flatLayout(kind, N, span) {
  * the vertices of a subdivided icosahedron: the twelve original corners
  * keep five neighbours, every other cell gets six.
  * ------------------------------------------------------------------ */
+// Subdivision 1 would be the plain dodecahedron; the slider spends that step
+// on the football instead.
+const FOOTBALL = 1;
+
 function sphereTopology(freq) {
   const t = (1 + Math.sqrt(5)) / 2;
   const corner = [
@@ -374,7 +380,31 @@ function sphereTopology(freq) {
 
   const link = (a, b) => { around[a].add(b); around[b].add(a); };
 
-  faces.forEach((face, fi) => {
+  const push = (x, y, z) => {
+    const l = Math.hypot(x, y, z);
+    const idx = coords.length / 3;
+    coords.push(x / l, y / l, z / l);
+    around.push(new Set());
+    return idx;
+  };
+
+  if (freq === FOOTBALL) {
+    // A football is the icosahedron truncated, not subdivided, so its 32
+    // cells are the 12 corners plus the 20 face centres. A corner meets the
+    // five faces around it; a centre meets its three corners and the three
+    // centres across its edges. Five and six neighbours, as everywhere else.
+    corner.forEach((p) => push(p[0], p[1], p[2]));
+    const centre = faces.map((face) => {
+      let x = 0, y = 0, z = 0;
+      face.forEach((v) => { x += corner[v][0]; y += corner[v][1]; z += corner[v][2]; });
+      const idx = push(x, y, z);
+      face.forEach((v) => link(idx, v));
+      return idx;
+    });
+    faces.forEach((face, i) => faces.forEach((other, j) => {
+      if (j > i && face.filter((v) => other.includes(v)).length === 2) link(centre[i], centre[j]);
+    }));
+  } else faces.forEach((face, fi) => {
     const grid = [];
     for (let i = 0; i <= freq; i++) {
       grid.push([]);
@@ -433,6 +463,42 @@ function sphereTopology(freq) {
     }
   }
 
+  // The cell's own outline. A corner is the one point equally far from the
+  // three cells that meet there, which on a sphere is the normal of the
+  // triangle their centres span. Taking the mean of the three instead would
+  // pull the corner towards whichever centre is crowded, and a football's
+  // pentagons would come out as big as its hexagons. Corner k lies between
+  // neighbour k and the next one round the ring, so the polygon ends up in
+  // the same cyclic order as the edges.
+  const corners = new Float64Array(links * 3);
+  const area = new Float64Array(n);
+  for (let c = 0; c < n; c++) {
+    const lo = nbrOff[c], d = deg[c];
+    for (let k = 0; k < d; k++) {
+      const a = nbr[lo + k], b = nbr[lo + (k + 1) % d];
+      const ax = pos[a * 3] - pos[c * 3], ay = pos[a * 3 + 1] - pos[c * 3 + 1], az = pos[a * 3 + 2] - pos[c * 3 + 2];
+      const bx = pos[b * 3] - pos[c * 3], by = pos[b * 3 + 1] - pos[c * 3 + 1], bz = pos[b * 3 + 2] - pos[c * 3 + 2];
+      let x = ay * bz - az * by, y = az * bx - ax * bz, z = ax * by - ay * bx;
+      // The ring runs anticlockwise seen from outside, so the normal already
+      // points out; flip anything that does not, or the polygon self-crosses.
+      if (x * pos[c * 3] + y * pos[c * 3 + 1] + z * pos[c * 3 + 2] < 0) { x = -x; y = -y; z = -z; }
+      const l = Math.hypot(x, y, z);
+      const o = (lo + k) * 3;
+      corners[o] = x / l; corners[o + 1] = y / l; corners[o + 2] = z / l;
+    }
+    // Fan the polygon from its first corner; flat triangles are close enough
+    // to the spherical area to rank the cells by size.
+    let sum = 0;
+    const o0 = lo * 3;
+    for (let k = 1; k < d - 1; k++) {
+      const o1 = (lo + k) * 3, o2 = (lo + k + 1) * 3;
+      const ax = corners[o1] - corners[o0], ay = corners[o1 + 1] - corners[o0 + 1], az = corners[o1 + 2] - corners[o0 + 2];
+      const bx = corners[o2] - corners[o0], by = corners[o2 + 1] - corners[o0 + 1], bz = corners[o2 + 2] - corners[o0 + 2];
+      sum += Math.hypot(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx) / 2;
+    }
+    area[c] = sum;
+  }
+
   // Pair the slots: cell c's edge d meets neighbour m's edge slot[k].
   for (let c = 0; c < n; c++) {
     for (let k = nbrOff[c]; k < nbrOff[c + 1]; k++) {
@@ -451,7 +517,7 @@ function sphereTopology(freq) {
   }
   spacing /= n;
 
-  return { kind: 'sphere', n, freq, deg, nbrOff, nbr, slot, pos, ends, spacing, hasBorder: false };
+  return { kind: 'sphere', n, freq, deg, nbrOff, nbr, slot, pos, ends, corners, area, spacing, hasBorder: false };
 }
 
 /* ------------------------------------------------------------------
@@ -694,6 +760,95 @@ function backtrack() {
 }
 
 /* ------------------------------------------------------------------
+ * Regions
+ *
+ * The pipes cut the surface into closed shapes, and those, not the cells,
+ * are what the lift takes apart: a shape runs across as many cells as the
+ * pipes let it, so most come out irregular and only the smallest are the
+ * single triangles between three junctions.
+ *
+ * Every cell is cut into wedges, one per corner, wedge k lying between
+ * edge k and edge k+1. A pipe leaving through edge k walls the wedges on
+ * either side of it apart; where no pipe crosses an edge, the wedges
+ * touching it are the same shape, in the same cell or across into the
+ * next. Union-find over the wedges is the whole algorithm.
+ *
+ * Building shapes out of wedges also settles the flat-panel problem: each
+ * wedge is projected on its own, so a shape spanning several cells bends
+ * along their shared edges instead of having to stay flat.
+ * ------------------------------------------------------------------ */
+let regionRoot = null;   // wedge -> the shape it belongs to
+let regionLift = null;   // shape root -> how far it rides off the sphere
+let regionCount = 0;
+
+function findRegions() {
+  const n = world.n, links = world.nbrOff[n];
+  const parent = new Int32Array(links);
+  for (let i = 0; i < links; i++) parent[i] = i;
+  const find = (i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+  const join = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+
+  const tileOf = (c) => (count[c] === 1 ? tilesFor(world.deg[c])[soleTile(c)] : null);
+  for (let c = 0; c < n; c++) {
+    const tile = tileOf(c);
+    if (!tile) continue;               // an undecided cell has no walls yet
+    const lo = world.nbrOff[c], d = world.deg[c];
+    for (let k = 0; k < d; k++) {
+      // Inside the cell, a pipe leaving through edge k walls off the wedges
+      // either side of it.
+      if (!tile.edges[k]) join(lo + (k + d - 1) % d, lo + k);
+      // Across the edge there is never a wall. A pipe only reaches the edge
+      // midpoint, so both halves of the edge stay open whether it carries one
+      // or not; what two facing pipes close off is the crossing at that
+      // midpoint, and the rule above has already accounted for it. This is
+      // why a shape wraps round a corner instead of stopping at a cell.
+      const m = world.nbr[lo + k], mt = tileOf(m);
+      if (!mt) continue;
+      // Corner k of c is corner s-1 of m: the two rings run the same way
+      // round their own cell, which is opposite ways along a shared edge.
+      const s = world.slot[lo + k], md = world.deg[m], mlo = world.nbrOff[m];
+      join(lo + k, mlo + (s + md - 1) % md);
+      join(lo + (k + d - 1) % d, mlo + s);
+    }
+  }
+
+  // Size each shape by the area of its wedges, then spread the sizes over
+  // -1..1 so the lift looks the same however fine the globe is.
+  const size = new Map();
+  regionRoot = new Int32Array(links).fill(-1);
+  for (let c = 0; c < n; c++) {
+    if (count[c] !== 1) continue;
+    const lo = world.nbrOff[c], d = world.deg[c];
+    const share = world.area[c] / d;
+    for (let k = 0; k < d; k++) {
+      const root = find(lo + k);
+      regionRoot[lo + k] = root;
+      size.set(root, (size.get(root) || 0) + share);
+    }
+  }
+  // On a log scale, because the shapes differ by factors and not by amounts:
+  // one shape can run over half the globe while two dozen others are single
+  // corner triangles, and spreading those raw would flatten every triangle
+  // onto the same value. Equal shapes still come out equal, which ranking
+  // them would not manage.
+  regionCount = size.size;
+  let mn = Infinity, mx = -Infinity;
+  for (const v of size.values()) {
+    const l = Math.log(v);
+    if (l < mn) mn = l; if (l > mx) mx = l;
+  }
+  const half = (mx - mn) / 2 || 1;
+  const mid = (mx + mn) / 2;
+  // Quantised, because a hundred shapes each on their own height reads as
+  // noise. Five steps keep the order intact and let same-sized shapes line up.
+  regionLift = new Map();
+  for (const [root, v] of size) {
+    const t = (mid - Math.log(v)) / half;
+    regionLift.set(root, Math.round(Math.max(-1, Math.min(1, t)) * 2) / 2);
+  }
+}
+
+/* ------------------------------------------------------------------
  * Drawing
  * ------------------------------------------------------------------ */
 const canvas = document.getElementById('c');
@@ -822,6 +977,7 @@ let yaw = 0.6;
 let pitch = -0.32;
 let spin = 0.0022;
 let ARC_STEPS = 4;
+const LIFT_RANGE = 0.14;   // radius the biggest and smallest shapes trade
 
 function drawSphere() {
   const R = Math.min(W, H) * 0.34;
@@ -850,37 +1006,64 @@ function drawSphere() {
   ARC_STEPS = world.n > 700 ? 3 : 4;
   const lw = Math.max(0.6, R * world.spacing * 0.078 * cfg.width);
 
-  // Pipes follow the surface, so each one is a short arc rather than a chord.
-  const tracePipes = (cell, tile) => {
-    const off = world.nbrOff[cell];
+  // Shapes ride off the sphere by their size: the big ones sink inward, the
+  // small ones rise. The pipes stay on the surface, so they keep reading as
+  // the net that cut the shapes out to begin with.
+  const spread = cfg.lift ? LIFT_RANGE : 0;
+  if (spread) findRegions();
+  const radOf = (root) => 1 + spread * regionLift.get(root);
+
+  // One pipe: centre out to the midpoint of edge k, following the surface,
+  // so it comes out as a short arc rather than a chord.
+  const traceSpoke = (cell, k, r) => {
     const px = pos[cell * 3], py = pos[cell * 3 + 1], pz = pos[cell * 3 + 2];
-    for (let d = 0; d < tile.edges.length; d++) {
-      if (!tile.edges[d]) continue;
-      const e = (off + d) * 3;
-      const ex = ends[e], ey = ends[e + 1], ez = ends[e + 2];
-      for (let s = 0; s <= ARC_STEPS; s++) {
-        const u = s / ARC_STEPS;
-        let x = px + (ex - px) * u;
-        let y = py + (ey - py) * u;
-        let z = pz + (ez - pz) * u;
-        const l = Math.hypot(x, y, z);
-        project(x / l, y / l, z / l);
-        if (s === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-      }
+    const e = (world.nbrOff[cell] + k) * 3;
+    const ex = ends[e], ey = ends[e + 1], ez = ends[e + 2];
+    for (let s = 0; s <= ARC_STEPS; s++) {
+      const u = s / ARC_STEPS;
+      const x = px + (ex - px) * u;
+      const y = py + (ey - py) * u;
+      const z = pz + (ez - pz) * u;
+      const l = Math.hypot(x, y, z) / r;
+      project(x / l, y / l, z / l);
+      if (s === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
     }
   };
 
+  const tracePipes = (cell, tile) => {
+    for (let d = 0; d < tile.edges.length; d++) if (tile.edges[d]) traceSpoke(cell, d, 1);
+  };
+
+  // One wedge: the cell centre, the midpoint of edge k, the corner beyond
+  // it, and the midpoint of the next edge back.
+  const corners = world.corners;
+  const traceWedge = (cell, k, r) => {
+    const lo = world.nbrOff[cell], d = world.deg[cell];
+    const a = (lo + k) * 3, b = (lo + (k + 1) % d) * 3;
+    project(pos[cell * 3] * r, pos[cell * 3 + 1] * r, pos[cell * 3 + 2] * r);
+    ctx.moveTo(sx, sy);
+    project(ends[a] * r, ends[a + 1] * r, ends[a + 2] * r); ctx.lineTo(sx, sy);
+    project(corners[a] * r, corners[a + 1] * r, corners[a + 2] * r); ctx.lineTo(sx, sy);
+    project(ends[b] * r, ends[b + 1] * r, ends[b + 2] * r); ctx.lineTo(sx, sy);
+    ctx.closePath();
+  };
+
   // Far side first, batched into one path, so the globe fill lays over it.
-  ctx.beginPath();
-  for (let cell = 0; cell < world.n; cell++) {
-    if (count[cell] !== 1) continue;
-    project(pos[cell * 3], pos[cell * 3 + 1], pos[cell * 3 + 2]);
-    if (rz > horizon) continue;
-    tracePipes(cell, tilesFor(world.deg[cell])[soleTile(cell)]);
+  // Only while everything sits flush on the sphere: lifted shapes reach past
+  // the silhouette that is meant to cover them, and a ball you can see into
+  // is the wrong picture anyway once it has come apart.
+  if (!spread) {
+    ctx.beginPath();
+    for (let cell = 0; cell < world.n; cell++) {
+      if (count[cell] !== 1) continue;
+      project(pos[cell * 3], pos[cell * 3 + 1], pos[cell * 3 + 2]);
+      if (rz > horizon) continue;
+      tracePipes(cell, tilesFor(world.deg[cell])[soleTile(cell)]);
+    }
+    ctx.strokeStyle = 'rgba(240,239,236,0.55)';
+    ctx.lineWidth = lw * 0.8;
+    ctx.stroke();
   }
-  ctx.strokeStyle = 'rgba(240,239,236,0.55)';
-  ctx.lineWidth = lw * 0.8;
-  ctx.stroke();
 
   const silR = R * dist / Math.sqrt(dist * dist - 1);
   const glow = ctx.createRadialGradient(cx - silR * 0.3, cy - silR * 0.35, silR * 0.05, cx, cy, silR);
@@ -894,13 +1077,69 @@ function drawSphere() {
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Near side. Cells fade a little towards the limb, which is what makes
-  // the thing read as a ball rather than a disc. Settled cells are grouped
-  // into a few paths by that fade; only the glowing ones are drawn singly.
-  const BANDS = 4;
-  const bands = [];
-  for (let i = 0; i < BANDS; i++) bands.push([]);
-  const glowing = [];
+  // The shapes, back to front, one wedge at a time. Wedges of the same shape
+  // sit at the same radius and take the same colour, so they read as one
+  // piece; filling and stroking each in that colour hides the seam Canvas
+  // otherwise leaves between two polygons sharing an edge.
+  // ponytail: an object per visible wedge per frame, fine up to ~1000 cells;
+  // sort an index array over a flat buffer if the globe ever gets finer.
+  if (spread) {
+    const wedges = [];
+    for (let cell = 0; cell < world.n; cell++) {
+      if (count[cell] !== 1) continue;
+      const lo = world.nbrOff[cell], d = world.deg[cell];
+      for (let k = 0; k < d; k++) {
+        const root = regionRoot[lo + k];
+        if (root < 0) continue;
+        const r = radOf(root);
+        project(pos[cell * 3] * r, pos[cell * 3 + 1] * r, pos[cell * 3 + 2] * r);
+        if (rz <= horizon) continue;
+        wedges.push({ cell, k, r, rz, root });
+      }
+    }
+    wedges.sort((a, b) => a.rz - b.rz);
+
+    for (const w of wedges) {
+      const depth = (w.rz - horizon) / (1 - horizon);
+      // Small shapes ride high and read light, big ones sink and go dark,
+      // so the colour says the same thing the height does.
+      const base = (26 + 104 * (regionLift.get(w.root) + 1) / 2) * (0.55 + 0.45 * depth);
+      const warm = heatOf(w.cell) * 0.55;
+      ctx.beginPath();
+      traceWedge(w.cell, w.k, w.r);
+      ctx.fillStyle = 'rgb('
+        + Math.round(base + (HOT[0] - base) * warm) + ','
+        + Math.round(base + (HOT[1] - base) * warm) + ','
+        + Math.round(base + (HOT[2] - base) * warm) + ')';
+      ctx.fill();
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // The shape's edge is the pipe that cut it out, drawn at the shape's own
+      // radius. Both shapes along a pipe draw it, each at its own height,
+      // which is what turns a seam into a visible step. A pipe with the same
+      // shape on both sides is not an edge at all but a spur reaching into
+      // one, and drawing it would put a line across a shape.
+      const lo = world.nbrOff[w.cell], d = world.deg[w.cell];
+      const tile = tilesFor(d)[soleTile(w.cell)];
+      const next = (w.k + 1) % d;
+      const here = tile.edges[w.k] && regionRoot[lo + (w.k + d - 1) % d] !== w.root;
+      const after = tile.edges[next] && regionRoot[lo + next] !== w.root;
+      if (here || after) {
+        ctx.beginPath();
+        if (here) traceSpoke(w.cell, w.k, w.r);
+        if (after) traceSpoke(w.cell, next, w.r);
+        ctx.strokeStyle = mix(heatOf(w.cell), 0.42 + 0.48 * depth);
+        ctx.lineWidth = Math.max(0.8, lw * 0.42);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Near side, back to front. The fade is per cell now rather than batched
+  // into four bands, which also loses the banding it used to show.
+  const order = [];
   const rings = [];
 
   for (let cell = 0; cell < world.n; cell++) {
@@ -910,10 +1149,9 @@ function drawSphere() {
       if (cfg.ghost) rings.push(cell, sx, sy);
       continue;
     }
-    if (heatOf(cell) > 0.02) { glowing.push(cell, rz); continue; }
-    const depth = (rz - horizon) / (1 - horizon);      // 0 at the limb, 1 facing us
-    bands[Math.min(BANDS - 1, (depth * BANDS) | 0)].push(cell, sx, sy);
+    if (!spread) order.push({ cell, rz, sx, sy });
   }
+  order.sort((a, b) => a.rz - b.rz);
 
   if (rings.length) {
     ctx.lineWidth = Math.max(0.5, lw * 0.5);
@@ -927,36 +1165,24 @@ function drawSphere() {
     }
   }
 
-  for (let i = 0; i < BANDS; i++) {
-    const list = bands[i];
-    if (!list.length) continue;
-    const fade = 0.66 + 0.34 * ((i + 0.5) / BANDS);
-    ctx.beginPath();
-    for (let k = 0; k < list.length; k += 3) {
-      const cell = list[k];
-      const tile = tilesFor(world.deg[cell])[soleTile(cell)];
-      tracePipes(cell, tile);
-      if (tile.degree > 0) {
-        const r = lw * (tile.degree > 2 ? 1.1 : 0.7);
-        ctx.moveTo(list[k + 1] + r, list[k + 2]);
-        ctx.arc(list[k + 1], list[k + 2], r, 0, TAU);
-      }
-    }
-    ctx.strokeStyle = mix(0, fade);
-    ctx.lineWidth = lw;
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < glowing.length; i += 2) {
-    const cell = glowing[i];
-    const depth = (glowing[i + 1] - horizon) / (1 - horizon);
+  // The pipes, but only while the shapes still lie flush on the ball. Lifted,
+  // each shape has already drawn the pipes bounding it at its own radius, and
+  // drawing them a second time on the surface would put lines across the
+  // shapes rather than around them.
+  if (!spread) for (const item of order) {
+    const cell = item.cell;
+    const depth = (item.rz - horizon) / (1 - horizon);   // 0 at the limb, 1 facing us
     const tile = tilesFor(world.deg[cell])[soleTile(cell)];
     const heat = heatOf(cell);
-    const col = mix(heat, 0.66 + 0.34 * depth);
-    ctx.strokeStyle = col;
-    ctx.lineWidth = lw * (1 + 0.5 * heat);
     ctx.beginPath();
     tracePipes(cell, tile);
+    if (tile.degree > 0) {
+      const dot = lw * (tile.degree > 2 ? 1.1 : 0.7);
+      ctx.moveTo(item.sx + dot, item.sy);
+      ctx.arc(item.sx, item.sy, dot, 0, TAU);
+    }
+    ctx.strokeStyle = mix(heat, 0.66 + 0.34 * depth);
+    ctx.lineWidth = lw * (1 + 0.5 * heat);
     ctx.stroke();
   }
 }
@@ -999,7 +1225,7 @@ const ui = {
   tiles: $('mTiles'), cells: $('mCells'),
   panel: $('panel'), pause: $('bPause'),
   grid: $('sGrid'), gridLabel: $('lGrid'), gridValue: $('vGrid'),
-  seal: $('cSeal'), sealRow: $('wSeal'),
+  seal: $('cSeal'), sealRow: $('wSeal'), lift: $('cLift'), liftRow: $('wLift'),
   square: $('bSquare'), hex: $('bHex'), sphere: $('bSphere'),
 };
 
@@ -1025,16 +1251,18 @@ bind('sWidth', 'vWidth', 'width', (x) => x.toFixed(1));
 // often the icosahedron is subdivided on the sphere.
 function showGridValue() {
   ui.gridValue.textContent = cfg.mode === 'sphere'
-    ? '÷ ' + cfg.freq
+    ? (cfg.freq === FOOTBALL ? 'Football' : '÷ ' + cfg.freq)
     : cfg.grid + ' × ' + cfg.grid;
 }
 function syncGridControl() {
   const sphere = cfg.mode === 'sphere';
-  ui.grid.min = sphere ? 2 : 4;
+  ui.grid.min = sphere ? FOOTBALL : 4;
   ui.grid.max = sphere ? 10 : 48;
   ui.grid.value = sphere ? cfg.freq : cfg.grid;
   ui.gridLabel.textContent = sphere ? 'Subdivision' : 'Grid';
   ui.sealRow.classList.toggle('off', sphere);
+  ui.liftRow.classList.toggle('off', !sphere);
+  ui.lift.disabled = !sphere;
   ui.seal.disabled = sphere;
   showGridValue();
 }
@@ -1054,6 +1282,7 @@ const bindCheck = (id, key, restart) => {
   });
 };
 bindCheck('cSeal', 'seal', true);
+bindCheck('cLift', 'lift', false);
 bindCheck('cGhost', 'ghost', false);
 bindCheck('cLoop', 'loop', false);
 

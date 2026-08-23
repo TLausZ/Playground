@@ -1,6 +1,6 @@
 # Collatz Visualizer
 
-Live demo: https://tlausz.github.io/collatz-visualizer/
+Live demo: https://tlausz.github.io/Playground/collatz-visualizer/
 
 An interactive view of the Collatz sequences for the starting values 1 to N.
 Hover the number line on the left to pick a start value, or use the quick-pick
@@ -123,7 +123,7 @@ hoc choices.
 ## Structure
 
 ```
-collatzConjecture/
+collatz-visualizer/
 ├── index.html            standalone viewer, opens by double-click
 ├── index-csv.html        viewer that loads data/collatz.csv
 ├── data/collatz.csv      precomputed sequences, 1..N

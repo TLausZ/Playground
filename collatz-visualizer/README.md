@@ -43,9 +43,9 @@ Sources: [Collatz conjecture, Wikipedia](https://en.wikipedia.org/wiki/Collatz_c
 There are two HTML files with the same viewer. They differ only in how they
 load the data.
 
-- **`index.html`** — standalone. The data is embedded in the file, so it opens
+- **`index.html`**: standalone. The data is embedded in the file, so it opens
   with a double-click (`file://`), no server needed.
-- **`index-csv.html`** — loads `data/collatz.csv` at runtime via `fetch`.
+- **`index-csv.html`**: loads `data/collatz.csv` at runtime via `fetch`.
   Browsers block `fetch` on `file://`, so this one needs a local server or a
   host such as GitHub Pages. It reads whatever range the CSV holds, so it suits
   larger N than the embedded page.
@@ -87,10 +87,10 @@ n,steps,max,sequence
 27,111,9232,"27,82,41,124,62,31,94,47,142,71,...,2,1"
 ```
 
-- `n` — the start value
-- `steps` — number of steps until it reaches 1
-- `max` — highest value in the sequence
-- `sequence` — the full path, comma-separated, in quotes
+- `n`: the start value
+- `steps`: number of steps until it reaches 1
+- `max`: highest value in the sequence
+- `sequence`: the full path, comma-separated, in quotes
 
 The end value is always 1, so it has no column of its own.
 

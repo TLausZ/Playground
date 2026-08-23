@@ -1148,7 +1148,7 @@ let N = 1000;         // highest start value in the data (set from the rows in m
 let sel = null;       // selected start value n
 let hoverStep = null; // step index under cursor when inside plot
 let showAll = false;  // "all" pick active: render every PICKS number at once
-let logMode = false;  // linear (fixed) vs logarithmic value axis — start linear
+let logMode = false;  // linear (fixed) vs logarithmic value axis, start linear
 let mode = 'circles'; // 'circles' (arc view, default) or 'steps' (classic line view)
 let animMs = 3000;    // ms to draw a freshly selected line left to right (set by the slider)
 let animN = null, animT0 = 0, animRAF = 0;
@@ -1646,7 +1646,7 @@ async function main() {
   const rows = txt.trim().split('\n').slice(1);
   seqs = []; stats = []; N = 1;
   for (const row of rows) {
-    // n,steps,max,"v,v,v..."  — split off the first three fields, rest is the sequence
+    // n,steps,max,"v,v,v...": split off the first three fields, rest is the sequence
     const q = row.indexOf('"');
     const head = row.slice(0, q).split(',');
     const n = +head[0];

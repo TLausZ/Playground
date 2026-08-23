@@ -191,7 +191,7 @@
  *
  * The solver never learns which lattice it is on. It asks the world for
  * a cell's neighbours and, for each of them, which edge of the neighbour
- * faces back — that pairing is all the geometry it needs. Squares have
+ * faces back, and that pairing is all the geometry it needs. Squares have
  * four edges, hexagons six, and the sphere mixes five and six.
  * ================================================================== */
 
@@ -319,7 +319,7 @@ function flatLayout(kind, N, span) {
 /* ------------------------------------------------------------------
  * The sphere
  *
- * A sphere cannot be tiled with hexagons alone — Euler's formula leaves
+ * A sphere cannot be tiled with hexagons alone: Euler's formula leaves
  * exactly twelve pentagons, the same twelve a football has. Cells here are
  * the vertices of a subdivided icosahedron: the twelve original corners
  * keep five neighbours, every other cell gets six.

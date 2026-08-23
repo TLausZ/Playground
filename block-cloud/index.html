@@ -259,7 +259,7 @@ function feeTints(items) {
 
 // --- Solide Würfel: 2D-Blockansicht nach oben extrudiert -----------------
 function buildCubes(txs) {
-  // Block-Reihenfolge beibehalten — der Miner sortiert faktisch nach Feerate
+  // Block-Reihenfolge beibehalten, der Miner sortiert faktisch nach Feerate
   const cell = SIDE / RES;
   const layout = new BlockLayout(RES);
   const items = txs.map((t) => {
@@ -274,7 +274,7 @@ function buildCubes(txs) {
       rate: t.vsize > 0 ? t.fee / t.vsize : 0,
     };
   });
-  // ponytail: Selbsttest — keine Überlappung der ersten 300 Quadrate
+  // ponytail: Selbsttest, keine Überlappung der ersten 300 Quadrate
   console.assert(
     items.slice(0, 300).every((a, i) => items.slice(0, i).every((b) =>
       a.x + a.side <= b.x + 1e-6 || b.x + b.side <= a.x + 1e-6 ||
@@ -283,7 +283,7 @@ function buildCubes(txs) {
   );
 
   // Echte Würfel: Höhe = Kantenlänge der Grundfläche (vsize bestimmt alle
-  // drei Dimensionen — grosse Transaktionen sind in jeder Richtung gross)
+  // drei Dimensionen, grosse Transaktionen sind in jeder Richtung gross)
   for (const it of items) it.hgt = it.side;
 
   feeTints(items);
@@ -379,7 +379,7 @@ function ringLayout(txs) {
       sum += th; Aring += items[i].a; i++;
     }
     // Endgeometrie exakt: Dicke aus der tatsächlichen Ringfläche, Winkel als
-    // Flächenanteile — jedes Segment ist damit flächentreu. Startwinkel pro
+    // Flächenanteile, jedes Segment ist damit flächentreu. Startwinkel pro
     // Ring um den goldenen Winkel versetzt, damit die Fugen nicht fluchten.
     const dx = Math.sqrt(r * r + Aring / Math.PI) - r;
     let ang = ring * 2.39996;
@@ -389,14 +389,14 @@ function ringLayout(txs) {
     }
     r += dx; ring++;
   }
-  // ponytail: Selbsttest — jede Tx wird zu genau einem Segment
+  // ponytail: Selbsttest, jede Tx wird zu genau einem Segment
   console.assert(out.length === items.length, 'Ring-Layout verliert Txs');
   return out;
 }
 
 // 3D: Segmente als extrudierte Donut-Stücke, Höhe = Ringdicke (Zikkurat:
 // hohe Feerate-Türme im Zentrum, flacher Low-Fee-Rand). Pro Ring eine
-// gemergte Geometrie — wenige Draw-Calls, und die Aufbau-Animation kann
+// gemergte Geometrie, wenige Draw-Calls, und die Aufbau-Animation kann
 // den ganzen Ring skalieren.
 const ringMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.85 });
 const ringEdgeMat = new THREE.LineBasicMaterial({ color: '#8C6B4F', transparent: true, opacity: 0.55 });

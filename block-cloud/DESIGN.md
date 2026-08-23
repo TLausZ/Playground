@@ -1,4 +1,4 @@
-# DESIGN.md — Block-Cloud
+# DESIGN.md: Block-Cloud
 
 ```yaml
 color:

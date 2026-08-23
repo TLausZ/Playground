@@ -1,6 +1,6 @@
 # Pool Caustics
 
-[`index.html`](index.html) — an animated recreation of the light reflections
+[`index.html`](index.html) is an animated recreation of the light reflections
 that drift across the surface of a swimming pool: thin cyan loops on deep blue,
 shifting quickly while the background colors wander. Open it in a browser; no
 dependencies, nothing to build.
@@ -26,7 +26,7 @@ Two details keep it from looking synthetic. Contour levels are derived each
 frame from the field's own mean and spread, so the amount of visible line stays
 stable whatever the settings. And neighbouring contour cells are grouped into
 connected components, so a reflection is either drawn whole or left out
-entirely — never sliced through at the edge of the lit band.
+entirely, never sliced through at the edge of the lit band.
 
 It runs on Canvas 2D rather than WebGL, with a fast sine approximation, a
 downscaled offscreen buffer for the glow, and a grid resolution that adapts to

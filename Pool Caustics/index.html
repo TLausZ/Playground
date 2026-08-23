@@ -142,7 +142,7 @@
 
 <div id="panel" hidden>
   <h1>Caustics</h1>
-  <p class="sub">Light reflections on water — contour lines of a wave field. Fast waves, slowly drifting colors.</p>
+  <p class="sub">Light reflections on water: contour lines of a wave field. Fast waves, slowly drifting colors.</p>
 
   <div class="buttons">
     <button class="b" id="btn-pause">Pause</button>
@@ -487,8 +487,8 @@
     return a;
   }
 
-  // The lit band. A reflection is shown or hidden as a whole — never sliced
-  // through — so the decision is made per connected contour, not per cell.
+  // The lit band. A reflection is shown or hidden as a whole, never sliced
+  // through, so the decision is made per connected contour, not per cell.
   var bandTop = 0, bandBot = 0, bandFadeLen = 1, rowLo = 0, rowHi = 0;
   function bandEdges() {
     var half = H * (0.12 + 0.26 * P.band);
@@ -706,7 +706,7 @@
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Bloom via a small offscreen buffer — far cheaper than very wide strokes
+  // Bloom via a small offscreen buffer, far cheaper than very wide strokes
   // and therefore affordable on phones too.
   var GS = 4;                       // downscale factor of the glow buffer
   var glowCan = document.createElement("canvas");

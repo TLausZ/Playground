@@ -10,7 +10,7 @@
 
 Just my creative ideas that I can't put anywhere else. Enjoy.
 
-Mostly self-contained — no build step. Open the HTML file and it runs,
+Mostly self-contained, no build step. Open the HTML file and it runs,
 or try the live versions: **<https://tlausz.github.io/Playground/>**
 
 ## What's in here
@@ -51,7 +51,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   <h3><a href="Wave%20Function%20Collapse/">Wave Function Collapse</a></h3>
   <p>
     A tile map that builds itself: the least certain cell picks a tile, the
-    constraint propagates, and the grid settles — on squares, on hexagons, or
+    constraint propagates, and the grid settles on squares, on hexagons, or
     wrapped around a globe.<br>
     readme: <a href="Wave%20Function%20Collapse/README.md">/Wave Function Collapse/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/Wave%20Function%20Collapse/">/Wave Function Collapse/</a>
@@ -82,8 +82,8 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   <h3><a href="collatz-visualizer/">Collatz Visualizer</a></h3>
   <p>
     The Collatz sequences for the start values 1 to 1000. Hover the number line
-    to pick one and watch it hop — halve when even, triple and add one when odd
-    — until it lands on 1.<br>
+    to pick one and watch it hop (halve when even, triple and add one when odd)
+    until it lands on 1.<br>
     readme: <a href="collatz-visualizer/README.md">/collatz-visualizer/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/collatz-visualizer/">/collatz-visualizer/</a>
   </p>

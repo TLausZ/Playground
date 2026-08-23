@@ -1,4 +1,4 @@
-# DESIGN.md — Collatz Visualizer
+# DESIGN.md: Collatz Visualizer
 
 Visual identity of the Collatz visualizer in this folder. Format after
 github.com/google-labs-code/design.md: YAML tokens plus prose. The tokens are
@@ -79,14 +79,14 @@ Transparencies are part of the palette: lines and borders are never fully
 opaque, only surfaces are. New elements should reuse an existing alpha level
 rather than introduce a new one.
 
-**Exception — the "all" overview.** When all nine quick-pick sequences are
+**Exception: the "all" overview.** When all nine quick-pick sequences are
 shown at once, a single brown family can no longer tell nine overlapping paths
 apart. That view breaks from the one-family rule and colours each path with
 its own hue from a validated nine-colour categorical set. It is scoped to that
 overview only; every other state (single selection, axes, chrome) stays in the
 brown family above.
 
-**Exception — the arc view.** The circles view fills each half-circle with the
+**Exception: the arc view.** The circles view fills each half-circle with the
 mean of a red-to-blue gradient across the run (red for the first hops, blue for
 the last), taken from the same categorical set as the overview, at a low alpha
 so the stacked fills stay legible. The outlines are a single dark brown (`ink`),

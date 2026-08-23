@@ -9,9 +9,9 @@ point.
 
 Prompt: `isometric Bitcoin B --sref 3879714017`
 
-The loop above is the whole move sped up. The film itself —
-[zoom_pingpong_720.mp4](zoom_pingpong_720.mp4), 720×720, 37 seconds — plays in
-the browser at <https://tlausz.github.io/Playground/MJzoom01/>. GitHub strips
+The loop above is the whole move sped up. The film itself,
+[zoom_pingpong_720.mp4](zoom_pingpong_720.mp4) at 720×720 and 37 seconds, plays
+in the browser at <https://tlausz.github.io/Playground/MJzoom01/>. GitHub strips
 `<video>` out of markdown, so a real player only exists on that page, not here.
 
 `match.py` measures how far each frame is zoomed out from the previous one and

@@ -1,6 +1,6 @@
 # Wave Function Collapse
 
-[`index.html`](index.html) — a tile map that builds itself. Every cell starts
+[`index.html`](index.html) is a tile map that builds itself. Every cell starts
 out as *every* tile at once; the least certain cell picks one, the choice
 propagates to its neighbours, and the whole grid settles into a pattern that is
 random but never breaks its own rules. Open it in a browser; no dependencies,
@@ -16,7 +16,7 @@ you can spin. Switch with the buttons or `G`.
 ## How it works
 
 A tile is nothing but a pattern of pipes leaving through its edges. Two cells
-fit together when the edge they share reads the same on both sides — a pipe
+fit together when the edge they share reads the same on both sides: a pipe
 never runs into a blank wall. That single rule generates the tile set: every
 combination of edges is a tile, minus the ones with a single pipe, because a
 pipe that just stops looks like a mistake. Four edges give 12 tiles, five give
@@ -24,11 +24,11 @@ pipe that just stops looks like a mistake. Four edges give 12 tiles, five give
 
 Each cell holds the set of tiles it could still become. One step of the loop:
 
-1. **Observe** — find the cell with the fewest options left, ties broken at
+1. **Observe:** find the cell with the fewest options left, ties broken at
    random so the front stays organic rather than sweeping top-left to
    bottom-right.
-2. **Collapse** — pick one of its tiles, weighted, and throw the rest away.
-3. **Propagate** — a cell only ever tells its neighbour which values the shared
+2. **Collapse:** pick one of its tiles, weighted, and throw the rest away.
+3. **Propagate:** a cell only ever tells its neighbour which values the shared
    edge may still take. If both 0 and 1 are still on the table, nothing is
    constrained and the neighbour is skipped; otherwise the neighbour loses every
    tile that disagrees, and the shrinking travels on from there.
@@ -51,20 +51,20 @@ from a seed, so the same seed always redraws the same map.
 ## The sphere
 
 A sphere cannot be tiled with hexagons alone. Euler's formula leaves exactly
-twelve pentagons no matter how fine the mesh gets — the same twelve a football
+twelve pentagons no matter how fine the mesh gets: the same twelve a football
 has. So the globe mixes both, and the pentagons each draw from their own set of
 27 tiles.
 
 The cells are the vertices of a subdivided icosahedron: the twelve original
 corners keep five neighbours, everything else gets six. Building it that way
-means the solver has to give up two assumptions that hold on a flat grid — that
+means the solver has to give up two assumptions that hold on a flat grid: that
 every cell has the same number of edges, and that the edge facing back is always
 the opposite one. There is no "opposite" on a sphere, so every edge stores which
 edge of its neighbour it meets. With that pairing in hand the observe-propagate
 loop is unchanged; it never learns which lattice it is running on.
 
 The very first step of the subdivision slider is a special case. Subdividing
-gives 10f²+2 cells — 42, 92, 162 — so the 32 of a real football are not in that
+gives 10f²+2 cells (42, 92, 162), so the 32 of a real football are not in that
 series at all. A football is the icosahedron truncated rather than subdivided:
 its cells are the twelve corners plus the twenty face centres, a corner meeting
 the five faces around it and a centre meeting its three corners and three
@@ -119,7 +119,7 @@ Press `H` or the ☰ button for the panel.
 | Square / Hexagon / Sphere | Which lattice to collapse on |
 | Grid, Subdivision | Cells per side, or how often the icosahedron is split; the lowest step on the sphere is the 32-cell football |
 | Speed | Collapses per frame |
-| Blanks | How strongly empty tiles are favoured — high leaves islands, 0 fills the grid |
+| Blanks | How strongly empty tiles are favoured: high leaves islands, 0 fills the grid |
 | Junctions | Weight of tees and crosses, the tiles that make pipes branch |
 | Line width | Thickness of the pipes |
 | Lift the shapes | Pull the shapes off the sphere by their size (sphere only) |
@@ -135,5 +135,5 @@ solver had to backtrack.
 
 Ported from a p5.js sketch of the same idea: a React component with a
 12-tile pipe set on a fixed 16×16 grid. This version drops the framework and p5
-for plain Canvas 2D in one file, and generalises the solver until the lattice —
-flat or wrapped around a globe, four edges or five or six — is just a parameter.
+for plain Canvas 2D in one file, and generalises the solver until the lattice
+(flat or wrapped around a globe, four edges or five or six) is just a parameter.

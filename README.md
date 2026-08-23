@@ -45,7 +45,8 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   <p>
     <strong><a href="Wave%20Function%20Collapse/">Wave Function Collapse</a></strong><br>
     A tile map that builds itself: the least certain cell picks a tile, the
-    constraint propagates, and the grid settles — on squares or on hexagons.
+    constraint propagates, and the grid settles — on squares, on hexagons, or
+    wrapped around a globe.
   </p>
 </td>
 </tr>

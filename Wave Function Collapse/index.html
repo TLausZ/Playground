@@ -101,6 +101,8 @@
 
   .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; cursor: pointer; }
   .check input { accent-color: var(--ui-accent); width: 15px; height: 15px; margin: 0; }
+  .check.off { opacity: .35; cursor: default; }
+  .seg button { flex: 1 1 0; min-width: 0; }
 
   .buttons { display: flex; gap: 7px; margin-top: 12px; }
   .buttons button {
@@ -133,10 +135,11 @@
   <div class="seg">
     <button id="bSquare" aria-pressed="true">Square</button>
     <button id="bHex" aria-pressed="false">Hexagon</button>
+    <button id="bSphere" aria-pressed="false">Sphere</button>
   </div>
 
   <div class="row">
-    <label>Grid <span class="val" id="vGrid">16</span></label>
+    <label><span id="lGrid">Grid</span> <span class="val" id="vGrid">16 × 16</span></label>
     <input type="range" id="sGrid" min="4" max="48" step="1" value="16">
   </div>
   <div class="row">
@@ -156,7 +159,7 @@
     <input type="range" id="sWidth" min="0.3" max="3" step="0.1" value="1">
   </div>
 
-  <label class="check"><input type="checkbox" id="cSeal" checked> Seal the border</label>
+  <label class="check" id="wSeal"><input type="checkbox" id="cSeal" checked> Seal the border</label>
   <label class="check"><input type="checkbox" id="cGhost" checked> Show uncertainty</label>
   <label class="check"><input type="checkbox" id="cLoop" checked> Restart when done</label>
 
@@ -168,7 +171,8 @@
   <div class="meta">
     <div>seed <b id="mSeed">–</b> · <span id="mState">collapsing</span></div>
     <div><b id="mTiles">12</b> tiles · open <b id="mOpen">0</b> · backtracks <b id="mBack">0</b></div>
-    <div style="margin-top:6px"><kbd>H</kbd> panel · <kbd>Space</kbd> pause · <kbd>R</kbd> restart · <kbd>G</kbd> grid · <kbd>F</kbd> fullscreen</div>
+    <div id="mCells">256 cells</div>
+    <div style="margin-top:6px"><kbd>H</kbd> panel · <kbd>Space</kbd> pause · <kbd>R</kbd> restart · <kbd>G</kbd> lattice · <kbd>F</kbd> fullscreen</div>
   </div>
 </div>
 
@@ -176,7 +180,7 @@
 'use strict';
 
 /* ==================================================================
- * Wave Function Collapse on two lattices.
+ * Wave Function Collapse on three lattices.
  *
  * A cell holds the set of tiles it could still become. Collapsing the
  * least certain cell to one tile shrinks its neighbours' sets, and that
@@ -184,60 +188,22 @@
  * a pattern of pipes leaving through its edges, so two cells fit when the
  * edge they share reads the same on both sides.
  *
- * The square lattice has 4 edges per cell, the hexagonal one has 6 —
- * the algorithm below never learns which, it only asks the lattice for
- * neighbours and edge indices.
+ * The solver never learns which lattice it is on. It asks the world for
+ * a cell's neighbours and, for each of them, which edge of the neighbour
+ * faces back — that pairing is all the geometry it needs. Squares have
+ * four edges, hexagons six, and the sphere mixes five and six.
  * ================================================================== */
 
 /* ------------------------------------------------------------------
- * Lattices
+ * Tile sets: every pattern of pipes a cell with D edges can carry, minus
+ * the ones with a single pipe, because a pipe that just stops looks like
+ * a mistake. 4 edges give 12 tiles, 5 give 27, 6 give 58.
  * ------------------------------------------------------------------ */
-
-// Square: edges/neighbours in cyclic order N, E, S, W. Opposite = d + 2.
-const SQUARE = {
-  D: 4,
-  offsets: () => [[0, -1], [1, 0], [0, 1], [-1, 0]],
-  // Pixel layout for an N x N grid inside a box of `span`.
-  layout(N, span) {
-    const c = span / N;
-    const spokes = [[0, -c / 2], [c / 2, 0], [0, c / 2], [-c / 2, 0]];
-    return {
-      w: span, h: span, cell: c, reach: c / 2, spokes,
-      center: (x, y) => [x * c + c / 2, y * c + c / 2],
-    };
-  },
-};
-
-// Hexagon, pointy top, odd rows pushed half a cell right (odd-r offset).
-// Edges/neighbours in cyclic order E, NE, NW, W, SW, SE. Opposite = d + 3.
-const HEX = {
-  D: 6,
-  offsets: (y) => (y & 1
-    ? [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]]
-    : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]]),
-  layout(N, span) {
-    // Fit both the staggered width and the 3/4-stacked height into the box.
-    const R = Math.min(span / ((N + 0.5) * Math.sqrt(3)), span / (1.5 * (N - 1) + 2));
-    const w = Math.sqrt(3) * R;      // hex width, flat side to flat side
-    const a = w / 2;                 // centre to edge midpoint
-    const rise = 1.5 * R;            // row spacing
-    const spokes = [0, -60, -120, 180, 120, 60].map((deg) => {
-      const t = (deg * Math.PI) / 180;
-      return [Math.cos(t) * a, Math.sin(t) * a];
-    });
-    return {
-      w: w * (N + 0.5), h: rise * (N - 1) + 2 * R, cell: w, reach: a, spokes,
-      center: (x, y) => [x * w + (y & 1 ? w : w / 2), y * rise + R],
-    };
-  },
-};
-
-/* ------------------------------------------------------------------
- * Tile set — every pattern of pipes with no dead ends.
- * 4 edges give 12 tiles, 6 edges give 58.
- * ------------------------------------------------------------------ */
-function buildTiles(D) {
-  const tiles = [];
+const TILE_CACHE = new Map();
+function tilesFor(D) {
+  let list = TILE_CACHE.get(D);
+  if (list) return list;
+  list = [];
   for (let bits = 0; bits < 1 << D; bits++) {
     const edges = [];
     let degree = 0;
@@ -246,10 +212,17 @@ function buildTiles(D) {
       edges.push(on);
       degree += on;
     }
-    if (degree === 1) continue; // a pipe that just stops looks like a mistake
-    tiles.push({ edges, degree });
+    if (degree === 1) continue;
+    // A pipe running straight through reads calmer than a bend. Only an
+    // even number of edges has a true opposite; pentagons never do.
+    let straight = false;
+    if (degree === 2 && D % 2 === 0) {
+      for (let d = 0; d < D / 2; d++) if (edges[d] && edges[d + D / 2]) straight = true;
+    }
+    list.push({ edges, degree, straight });
   }
-  return tiles;
+  TILE_CACHE.set(D, list);
+  return list;
 }
 
 /* Small seeded PRNG, so a seed always redraws the same map. */
@@ -260,12 +233,15 @@ const mulberry32 = (a) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
+const TAU = Math.PI * 2;
+
 /* ------------------------------------------------------------------
- * State
+ * Config
  * ------------------------------------------------------------------ */
 const cfg = {
   mode: 'square',
-  grid: 16,
+  grid: 16,   // cells per side, flat lattices
+  freq: 5,    // icosahedron subdivision, sphere
   speed: 2,
   blank: 4,
   junction: 1,
@@ -275,26 +251,252 @@ const cfg = {
   loop: true,
 };
 
-let lattice = SQUARE;
-let D = 4;             // edges per cell
-let TILES = [];        // the tile set for this lattice
-let T = 0;             // how many tiles
-let N = 16;            // grid side
-let cells = 0;
+/* ------------------------------------------------------------------
+ * Flat lattices
+ *
+ * Square: neighbours N, E, S, W. Hexagon: pointy top, odd rows shifted
+ * half a cell right, neighbours E, NE, NW, W, SW, SE. Both orders are
+ * cyclic, so the edge facing back is always d + D/2.
+ * ------------------------------------------------------------------ */
+const FLAT_DIRS = {
+  square: () => [[0, -1], [1, 0], [0, 1], [-1, 0]],
+  hex: (y) => (y & 1
+    ? [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]]
+    : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]]),
+};
 
-let allow;             // Uint8Array(cells * T): is tile t still possible here?
-let count;             // Int16Array(cells): how many tiles are left
-let stamp;             // Float32Array(cells): when the cell settled, for the trail
-let neighbours;        // Int32Array(cells * D): neighbour index or -1
-let weights;           // per-tile weight from the sliders
+function flatTopology(kind, N) {
+  const D = kind === 'hex' ? 6 : 4;
+  const n = N * N;
+  const nbr = new Int32Array(n * D).fill(-1);
+  const slot = new Int8Array(n * D).fill(-1);
+  const deg = new Int8Array(n).fill(D);
+  const nbrOff = new Int32Array(n + 1);
+  for (let c = 0; c <= n; c++) nbrOff[c] = c * D;
+  for (let y = 0; y < N; y++) {
+    const dirs = FLAT_DIRS[kind](y);
+    for (let x = 0; x < N; x++) {
+      const c = y * N + x;
+      for (let d = 0; d < D; d++) {
+        const nx = x + dirs[d][0];
+        const ny = y + dirs[d][1];
+        if (nx < 0 || nx >= N || ny < 0 || ny >= N) continue;
+        nbr[c * D + d] = ny * N + nx;
+        slot[c * D + d] = (d + D / 2) % D;
+      }
+    }
+  }
+  return { kind, n, N, deg, nbrOff, nbr, slot, hasBorder: true };
+}
 
-let trail = [];        // every removal, so a wrong guess can be undone
-let stack = [];        // one entry per guess
-let base = 0;          // trail length after the border was sealed
+/* Pixel layout for an N x N flat grid inside a box of `span`. */
+function flatLayout(kind, N, span) {
+  if (kind === 'square') {
+    const c = span / N;
+    return {
+      w: span, h: span, cell: c, reach: c / 2,
+      spokes: [[0, -c / 2], [c / 2, 0], [0, c / 2], [-c / 2, 0]],
+      center: (x, y) => [x * c + c / 2, y * c + c / 2],
+    };
+  }
+  // Fit both the staggered width and the 3/4-stacked height into the box.
+  const R = Math.min(span / ((N + 0.5) * Math.sqrt(3)), span / (1.5 * (N - 1) + 2));
+  const w = Math.sqrt(3) * R;  // hex width, flat side to flat side
+  const a = w / 2;             // centre to edge midpoint
+  const rise = 1.5 * R;        // row spacing
+  return {
+    w: w * (N + 0.5), h: rise * (N - 1) + 2 * R, cell: w, reach: a,
+    spokes: [0, -60, -120, 180, 120, 60].map((deg) => {
+      const t = (deg * Math.PI) / 180;
+      return [Math.cos(t) * a, Math.sin(t) * a];
+    }),
+    center: (x, y) => [x * w + (y & 1 ? w : w / 2), y * rise + R],
+  };
+}
+
+/* ------------------------------------------------------------------
+ * The sphere
+ *
+ * A sphere cannot be tiled with hexagons alone — Euler's formula leaves
+ * exactly twelve pentagons, the same twelve a football has. Cells here are
+ * the vertices of a subdivided icosahedron: the twelve original corners
+ * keep five neighbours, every other cell gets six.
+ * ------------------------------------------------------------------ */
+function sphereTopology(freq) {
+  const t = (1 + Math.sqrt(5)) / 2;
+  const corner = [
+    [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
+    [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t],
+    [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1],
+  ];
+  const faces = [
+    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+  ];
+
+  const coords = [];
+  const byKey = new Map();
+  const around = [];
+
+  // Points shared by two faces must land on one cell, so keys come from
+  // integer barycentric coordinates rather than from rounded floats.
+  const edgeKey = (u, v, s) => (u < v ? 'e' + u + '_' + v + '_' + s : 'e' + v + '_' + u + '_' + (freq - s));
+  const keyFor = (face, fi, i, j) => {
+    const [a, b, c] = face;
+    const k = freq - i - j;
+    if (i === 0 && j === 0) return 'v' + a;
+    if (k === 0 && j === 0) return 'v' + b;
+    if (k === 0 && i === 0) return 'v' + c;
+    if (j === 0) return edgeKey(a, b, i);
+    if (i === 0) return edgeKey(a, c, j);
+    if (k === 0) return edgeKey(b, c, j);
+    return 'f' + fi + '_' + i + '_' + j;
+  };
+
+  const vertexAt = (face, fi, i, j) => {
+    const key = keyFor(face, fi, i, j);
+    let idx = byKey.get(key);
+    if (idx !== undefined) return idx;
+    const [a, b, c] = face;
+    const k = freq - i - j;
+    let x = (corner[a][0] * k + corner[b][0] * i + corner[c][0] * j) / freq;
+    let y = (corner[a][1] * k + corner[b][1] * i + corner[c][1] * j) / freq;
+    let z = (corner[a][2] * k + corner[b][2] * i + corner[c][2] * j) / freq;
+    const len = Math.hypot(x, y, z);
+    idx = coords.length / 3;
+    coords.push(x / len, y / len, z / len);
+    around.push(new Set());
+    byKey.set(key, idx);
+    return idx;
+  };
+
+  const link = (a, b) => { around[a].add(b); around[b].add(a); };
+
+  faces.forEach((face, fi) => {
+    const grid = [];
+    for (let i = 0; i <= freq; i++) {
+      grid.push([]);
+      for (let j = 0; j <= freq - i; j++) grid[i].push(vertexAt(face, fi, i, j));
+    }
+    for (let i = 0; i < freq; i++) {
+      for (let j = 0; j < freq - i; j++) {
+        link(grid[i][j], grid[i + 1][j]);
+        link(grid[i + 1][j], grid[i][j + 1]);
+        link(grid[i][j + 1], grid[i][j]);
+      }
+    }
+  });
+
+  const n = coords.length / 3;
+  const pos = Float64Array.from(coords);
+  const deg = new Int8Array(n);
+  const nbrOff = new Int32Array(n + 1);
+  for (let c = 0; c < n; c++) {
+    deg[c] = around[c].size;
+    nbrOff[c + 1] = nbrOff[c] + deg[c];
+  }
+  const links = nbrOff[n];
+  const nbr = new Int32Array(links);
+  const slot = new Int8Array(links).fill(-1);
+  const ends = new Float64Array(links * 3);
+
+  // Order each cell's neighbours cyclically, seen from outside, so the
+  // tile edges sit in a consistent ring and "opposite" means something.
+  for (let c = 0; c < n; c++) {
+    const nx = pos[c * 3], ny = pos[c * 3 + 1], nz = pos[c * 3 + 2];
+    const list = Array.from(around[c]);
+    const first = list[0];
+    let ux = pos[first * 3] - nx, uy = pos[first * 3 + 1] - ny, uz = pos[first * 3 + 2] - nz;
+    let dn = ux * nx + uy * ny + uz * nz;
+    ux -= dn * nx; uy -= dn * ny; uz -= dn * nz;
+    let ul = Math.hypot(ux, uy, uz);
+    ux /= ul; uy /= ul; uz /= ul;
+    const wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;
+    list.sort((p, q) => angleOf(p) - angleOf(q));
+    function angleOf(m) {
+      const dx = pos[m * 3] - nx, dy = pos[m * 3 + 1] - ny, dz = pos[m * 3 + 2] - nz;
+      return Math.atan2(dx * wx + dy * wy + dz * wz, dx * ux + dy * uy + dz * uz);
+    }
+    for (let d = 0; d < list.length; d++) {
+      const m = list[d];
+      const k = nbrOff[c] + d;
+      nbr[k] = m;
+      // A pipe leaves towards the edge it shares with that neighbour,
+      // which by symmetry sits halfway between the two cell centres.
+      let ex = (nx + pos[m * 3]) / 2;
+      let ey = (ny + pos[m * 3 + 1]) / 2;
+      let ez = (nz + pos[m * 3 + 2]) / 2;
+      const el = Math.hypot(ex, ey, ez);
+      ends[k * 3] = ex / el; ends[k * 3 + 1] = ey / el; ends[k * 3 + 2] = ez / el;
+    }
+  }
+
+  // Pair the slots: cell c's edge d meets neighbour m's edge slot[k].
+  for (let c = 0; c < n; c++) {
+    for (let k = nbrOff[c]; k < nbrOff[c + 1]; k++) {
+      const m = nbr[k];
+      for (let j = nbrOff[m]; j < nbrOff[m + 1]; j++) {
+        if (nbr[j] === c) { slot[k] = j - nbrOff[m]; break; }
+      }
+    }
+  }
+
+  // Typical angular distance between neighbours, for line widths.
+  let spacing = 0;
+  for (let c = 0; c < n; c++) {
+    const m = nbr[nbrOff[c]];
+    spacing += Math.acos(Math.min(1, pos[c * 3] * pos[m * 3] + pos[c * 3 + 1] * pos[m * 3 + 1] + pos[c * 3 + 2] * pos[m * 3 + 2]));
+  }
+  spacing /= n;
+
+  return { kind: 'sphere', n, freq, deg, nbrOff, nbr, slot, pos, ends, spacing, hasBorder: false };
+}
+
+/* ------------------------------------------------------------------
+ * A world is a topology plus the bookkeeping the solver needs: where a
+ * cell's tile flags start, and how many it has.
+ * ------------------------------------------------------------------ */
+const WORLD_CACHE = new Map();
+function buildWorld(kind, param) {
+  const key = kind + ':' + param;
+  const cached = WORLD_CACHE.get(key);
+  if (cached) return cached;
+  const w = kind === 'sphere' ? sphereTopology(param) : flatTopology(kind, param);
+  w.base = new Int32Array(w.n);
+  w.size = new Int32Array(w.n);
+  let total = 0;
+  for (let c = 0; c < w.n; c++) {
+    const list = tilesFor(w.deg[c]);
+    w.base[c] = total;
+    w.size[c] = list.length;
+    total += list.length;
+  }
+  w.total = total;
+  w.degrees = Array.from(new Set(Array.from(w.deg))).sort((a, b) => b - a);
+  if (WORLD_CACHE.size > 8) WORLD_CACHE.clear();
+  WORLD_CACHE.set(key, w);
+  return w;
+}
+
+/* ------------------------------------------------------------------
+ * Solver state
+ * ------------------------------------------------------------------ */
+let world;
+let allow;        // Uint8Array: is tile t still possible in this cell?
+let count;        // Int32Array: how many tiles a cell has left
+let stamp;        // Float32Array: when a cell settled, for the trail
+let weights;      // Map degree -> weight per tile
+
+let trail = [];       // every removal, so a wrong guess can be undone
+let trailCell = [];
+let stack = [];       // one entry per guess
+let base = 0;         // trail length after the border was sealed
 
 let rand = mulberry32(1);
 let seed = 0;
-let open = 0;          // cells still holding more than one tile
+let open = 0;         // cells still holding more than one tile
 let backtracks = 0;
 let contradicted = false;
 let doneAt = 0;
@@ -305,65 +507,51 @@ let now = 0;
 const weightOf = (tile) => {
   if (tile.degree === 0) return Math.max(cfg.blank, 0.0001);
   if (tile.degree >= 3) return Math.max(cfg.junction, 0.0001);
-  // Degree two: a pipe running straight through reads calmer than a bend.
-  for (let d = 0; d < D; d++) {
-    if (tile.edges[d] && tile.edges[(d + D / 2) % D]) return 2;
-  }
-  return 1;
+  return tile.straight ? 2 : 1;
 };
-const refreshWeights = () => { weights = TILES.map(weightOf); };
+function refreshWeights() {
+  weights = new Map();
+  for (const d of world.degrees) weights.set(d, tilesFor(d).map(weightOf));
+}
 
 function reset(newSeed) {
-  lattice = cfg.mode === 'hex' ? HEX : SQUARE;
-  D = lattice.D;
-  TILES = buildTiles(D);
-  T = TILES.length;
-  N = cfg.grid;
-  cells = N * N;
+  world = buildWorld(cfg.mode, cfg.mode === 'sphere' ? cfg.freq : cfg.grid);
   refreshWeights();
 
   seed = newSeed === undefined ? (Math.random() * 1e9) | 0 : newSeed;
   rand = mulberry32(seed);
 
-  allow = new Uint8Array(cells * T).fill(1);
-  count = new Int16Array(cells).fill(T);
-  stamp = new Float32Array(cells);
-  neighbours = new Int32Array(cells * D);
-  for (let y = 0; y < N; y++) {
-    const offs = lattice.offsets(y);
-    for (let x = 0; x < N; x++) {
-      for (let d = 0; d < D; d++) {
-        const nx = x + offs[d][0];
-        const ny = y + offs[d][1];
-        const inside = nx >= 0 && nx < N && ny >= 0 && ny < N;
-        neighbours[(y * N + x) * D + d] = inside ? ny * N + nx : -1;
-      }
-    }
-  }
+  allow = new Uint8Array(world.total).fill(1);
+  count = new Int32Array(world.n);
+  for (let c = 0; c < world.n; c++) count[c] = world.size[c];
+  stamp = new Float32Array(world.n);
 
   trail = [];
+  trailCell = [];
   stack = [];
-  open = cells;
+  open = world.n;
   backtracks = 0;
   contradicted = false;
   doneAt = 0;
   carry = 0;
 
-  if (cfg.seal) sealBorder();
+  if (cfg.seal && world.hasBorder) sealBorder();
   base = trail.length;
 
   ui.seed.textContent = seed;
-  ui.tiles.textContent = T;
+  ui.tiles.textContent = world.degrees.map((d) => tilesFor(d).length).join(' + ');
+  ui.cells.textContent = world.n + ' cells' + (world.kind === 'sphere' ? ' · 12 of them pentagons' : '');
 }
 
 /* ------------------------------------------------------------------
  * The three primitives: drop a tile, undo back to a mark, propagate.
  * ------------------------------------------------------------------ */
 function drop(cell, tile) {
-  const i = cell * T + tile;
+  const i = world.base[cell] + tile;
   if (!allow[i]) return true;
   allow[i] = 0;
   trail.push(i);
+  trailCell.push(cell);
   const left = --count[cell];
   if (left === 1) { open--; stamp[cell] = now; }
   return left > 0;
@@ -371,9 +559,8 @@ function drop(cell, tile) {
 
 function undoTo(mark) {
   while (trail.length > mark) {
-    const i = trail.pop();
-    allow[i] = 1;
-    const cell = (i / T) | 0;
+    allow[trail.pop()] = 1;
+    const cell = trailCell.pop();
     if (++count[cell] === 2) open++;
   }
 }
@@ -385,22 +572,31 @@ function propagate(start) {
   const queue = [start];
   while (queue.length > 0) {
     const cell = queue.pop();
-    for (let d = 0; d < D; d++) {
-      const n = neighbours[cell * D + d];
+    const cBase = world.base[cell];
+    const cSize = world.size[cell];
+    const cTiles = tilesFor(world.deg[cell]);
+    const off = world.nbrOff[cell];
+    const end = world.nbrOff[cell + 1];
+    for (let k = off; k < end; k++) {
+      const n = world.nbr[k];
       if (n < 0) continue;
+      const d = k - off;
       let has0 = false;
       let has1 = false;
-      for (let t = 0; t < T; t++) {
-        if (!allow[cell * T + t]) continue;
-        if (TILES[t].edges[d]) has1 = true; else has0 = true;
+      for (let t = 0; t < cSize; t++) {
+        if (!allow[cBase + t]) continue;
+        if (cTiles[t].edges[d]) has1 = true; else has0 = true;
         if (has0 && has1) break;
       }
       if (has0 && has1) continue;
       const need = has1 ? 1 : 0;
-      const theirEdge = (d + D / 2) % D;
+      const their = world.slot[k];
+      const nTiles = tilesFor(world.deg[n]);
+      const nBase = world.base[n];
+      const nSize = world.size[n];
       let changed = false;
-      for (let t = 0; t < T; t++) {
-        if (!allow[n * T + t] || TILES[t].edges[theirEdge] === need) continue;
+      for (let t = 0; t < nSize; t++) {
+        if (!allow[nBase + t] || nTiles[t].edges[their] === need) continue;
         if (!drop(n, t)) return false; // neighbour ran out of options
         changed = true;
       }
@@ -410,16 +606,19 @@ function propagate(start) {
   return true;
 }
 
-/* A pipe may not leave the grid: on the border, edges without a neighbour
- * are forced blank. Runs once per restart and is never undone. */
+/* A pipe may not leave a flat grid: on the border, edges without a
+ * neighbour are forced blank. Runs once per restart and is never undone. */
 function sealBorder() {
   const touched = [];
-  for (let cell = 0; cell < cells; cell++) {
+  for (let cell = 0; cell < world.n; cell++) {
+    const off = world.nbrOff[cell];
+    const tiles = tilesFor(world.deg[cell]);
     let changed = false;
-    for (let d = 0; d < D; d++) {
-      if (neighbours[cell * D + d] >= 0) continue;
-      for (let t = 0; t < T; t++) {
-        if (allow[cell * T + t] && TILES[t].edges[d]) { drop(cell, t); changed = true; }
+    for (let k = off; k < world.nbrOff[cell + 1]; k++) {
+      if (world.nbr[k] >= 0) continue;
+      const d = k - off;
+      for (let t = 0; t < world.size[cell]; t++) {
+        if (allow[world.base[cell] + t] && tiles[t].edges[d]) { drop(cell, t); changed = true; }
       }
     }
     if (changed) touched.push(cell);
@@ -434,7 +633,7 @@ function pickCell() {
   let best = -1;
   let bestCount = Infinity;
   let ties = 0;
-  for (let c = 0; c < cells; c++) {
+  for (let c = 0; c < world.n; c++) {
     const k = count[c];
     if (k <= 1) continue;
     if (k < bestCount) { bestCount = k; best = c; ties = 1; }
@@ -445,25 +644,27 @@ function pickCell() {
 
 function optionsOf(cell) {
   const opts = [];
-  for (let t = 0; t < T; t++) if (allow[cell * T + t]) opts.push(t);
+  const b = world.base[cell];
+  for (let t = 0; t < world.size[cell]; t++) if (allow[b + t]) opts.push(t);
   return opts;
 }
 
-function takeWeighted(opts) {
+function takeWeighted(cell, opts) {
+  const w = weights.get(world.deg[cell]);
   let total = 0;
-  for (const t of opts) total += weights[t];
+  for (const t of opts) total += w[t];
   let roll = rand() * total;
   let idx = opts.length - 1;
   for (let i = 0; i < opts.length; i++) {
-    roll -= weights[opts[i]];
+    roll -= w[opts[i]];
     if (roll <= 0) { idx = i; break; }
   }
   return opts.splice(idx, 1)[0];
 }
 
 function assign(cell, tile) {
-  for (let t = 0; t < T; t++) {
-    if (t !== tile && allow[cell * T + t] && !drop(cell, t)) return false;
+  for (let t = 0; t < world.size[cell]; t++) {
+    if (t !== tile && allow[world.base[cell] + t] && !drop(cell, t)) return false;
   }
   return propagate(cell);
 }
@@ -472,7 +673,7 @@ function collapseOne() {
   const cell = pickCell();
   if (cell < 0) return;
   const rest = optionsOf(cell);
-  const tile = takeWeighted(rest);
+  const tile = takeWeighted(cell, rest);
   stack.push({ cell, rest, mark: trail.length });
   if (!assign(cell, tile)) backtrack();
 }
@@ -485,10 +686,10 @@ function backtrack() {
     undoTo(step.mark);
     backtracks++;
     if (step.rest.length === 0) { stack.pop(); continue; }
-    if (assign(step.cell, takeWeighted(step.rest))) return true;
+    if (assign(step.cell, takeWeighted(step.cell, step.rest))) return true;
   }
   undoTo(base);
-  contradicted = true; // this grid cannot be solved at all
+  contradicted = true; // this world cannot be solved at all
   return false;
 }
 
@@ -514,68 +715,249 @@ const HOT = [255, 204, 51];
 const COOL = [240, 239, 236];
 
 const soleTile = (cell) => {
-  for (let t = 0; t < T; t++) if (allow[cell * T + t]) return t;
+  const b = world.base[cell];
+  for (let t = 0; t < world.size[cell]; t++) if (allow[b + t]) return t;
   return -1;
 };
+
+const heatOf = (cell) => {
+  const age = Math.min(1, (now - stamp[cell]) / TRAIL_MS);
+  return 1 - age * age;
+};
+
+function mix(heat, fade) {
+  const r = Math.round(COOL[0] + (HOT[0] - COOL[0]) * heat);
+  const g = Math.round(COOL[1] + (HOT[1] - COOL[1]) * heat);
+  const b = Math.round(COOL[2] + (HOT[2] - COOL[2]) * heat);
+  return fade === 1 ? 'rgb(' + r + ',' + g + ',' + b + ')'
+    : 'rgba(' + r + ',' + g + ',' + b + ',' + fade + ')';
+}
 
 function draw() {
   ctx.fillStyle = '#2d2d2d';
   ctx.fillRect(0, 0, W, H);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (world.kind === 'sphere') drawSphere(); else drawFlat();
+}
 
+function drawFlat() {
+  const N = world.N;
   const span = Math.min(W, H) * 0.9;
-  const geo = lattice.layout(N, span);
+  const geo = flatLayout(world.kind, N, span);
   const ox = (W - geo.w) / 2;
   const oy = (H - geo.h) / 2;
   const lw = Math.max(0.6, geo.cell * 0.085 * cfg.width);
-
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
+  const tiles = tilesFor(world.deg[0]);
+  const T = tiles.length;
 
   // Cells still weighing several tiles: a ring that tightens as they decide.
   if (cfg.ghost) {
     ctx.lineWidth = Math.max(0.5, lw * 0.5);
-    for (let cell = 0; cell < cells; cell++) {
+    for (let cell = 0; cell < world.n; cell++) {
       if (count[cell] <= 1) continue;
       const certainty = 1 - (count[cell] - 1) / (T - 1);
       const [cx, cy] = geo.center(cell % N, (cell / N) | 0);
-      const r = geo.reach * (0.18 + 0.5 * (1 - certainty));
       ctx.strokeStyle = 'rgba(240,239,236,' + (0.05 + 0.16 * certainty).toFixed(3) + ')';
       ctx.beginPath();
-      ctx.arc(ox + cx, oy + cy, r, 0, Math.PI * 2);
+      ctx.arc(ox + cx, oy + cy, geo.reach * (0.18 + 0.5 * (1 - certainty)), 0, TAU);
       ctx.stroke();
     }
   }
 
-  for (let cell = 0; cell < cells; cell++) {
+  // Cells past the trail all share one colour and width, so they go into a
+  // single path; only the handful still glowing is drawn one by one.
+  const glowing = [];
+  ctx.beginPath();
+  for (let cell = 0; cell < world.n; cell++) {
     if (count[cell] !== 1) continue;
-    const tile = TILES[soleTile(cell)];
+    if (heatOf(cell) > 0.02) { glowing.push(cell); continue; }
+    const tile = tiles[soleTile(cell)];
     const [cx, cy] = geo.center(cell % N, (cell / N) | 0);
     const x = ox + cx;
     const y = oy + cy;
+    for (let d = 0; d < tile.edges.length; d++) {
+      if (!tile.edges[d]) continue;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + geo.spokes[d][0], y + geo.spokes[d][1]);
+    }
+    if (tile.degree > 0) {
+      ctx.moveTo(x + lw * 0.7, y);
+      ctx.arc(x, y, lw * (tile.degree > 2 ? 1.1 : 0.7), 0, TAU);
+    }
+  }
+  ctx.strokeStyle = mix(0, 1);
+  ctx.lineWidth = lw;
+  ctx.stroke();
 
-    const age = Math.min(1, (now - stamp[cell]) / TRAIL_MS);
-    const heat = 1 - age * age;
-    const col = 'rgb(' +
-      Math.round(COOL[0] + (HOT[0] - COOL[0]) * heat) + ',' +
-      Math.round(COOL[1] + (HOT[1] - COOL[1]) * heat) + ',' +
-      Math.round(COOL[2] + (HOT[2] - COOL[2]) * heat) + ')';
-
+  for (const cell of glowing) {
+    const tile = tiles[soleTile(cell)];
+    const [cx, cy] = geo.center(cell % N, (cell / N) | 0);
+    const x = ox + cx;
+    const y = oy + cy;
+    const heat = heatOf(cell);
+    const col = mix(heat, 1);
     ctx.strokeStyle = col;
     ctx.lineWidth = lw * (1 + 0.6 * heat);
     ctx.beginPath();
-    for (let d = 0; d < D; d++) {
+    for (let d = 0; d < tile.edges.length; d++) {
       if (!tile.edges[d]) continue;
       ctx.moveTo(x, y);
       ctx.lineTo(x + geo.spokes[d][0], y + geo.spokes[d][1]);
     }
     ctx.stroke();
-
     if (tile.degree > 0) {
       ctx.fillStyle = col;
       ctx.beginPath();
-      ctx.arc(x, y, Math.max(0.7, lw * (tile.degree > 2 ? 1.1 : 0.7)), 0, Math.PI * 2);
+      ctx.arc(x, y, Math.max(0.7, lw * (tile.degree > 2 ? 1.1 : 0.7)), 0, TAU);
       ctx.fill();
     }
+  }
+}
+
+/* The globe: an orthographic-ish camera at three radii, cells drawn as
+ * arcs along the surface. The far side shows through faintly, which keeps
+ * it readable as a sphere rather than a disc. */
+let yaw = 0.6;
+let pitch = -0.32;
+let spin = 0.0022;
+let ARC_STEPS = 4;
+
+function drawSphere() {
+  const R = Math.min(W, H) * 0.34;
+  const cx = W / 2;
+  const cy = H / 2;
+  const dist = 3.0;
+  const horizon = 1 / dist;
+  const pos = world.pos;
+  const ends = world.ends;
+
+  const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
+  const cpit = Math.cos(pitch), spit = Math.sin(pitch);
+  let rx = 0, ry = 0, rz = 0, sx = 0, sy = 0;
+  const project = (x, y, z) => {
+    const x1 = x * cyaw + z * syaw;
+    const z1 = -x * syaw + z * cyaw;
+    ry = y * cpit - z1 * spit;
+    rz = y * spit + z1 * cpit;
+    rx = x1;
+    const f = dist / (dist - rz);
+    sx = cx + rx * f * R;
+    sy = cy - ry * f * R;
+  };
+
+  // Fewer segments per arc once the cells get small enough not to notice.
+  ARC_STEPS = world.n > 700 ? 3 : 4;
+  const lw = Math.max(0.6, R * world.spacing * 0.078 * cfg.width);
+
+  // Pipes follow the surface, so each one is a short arc rather than a chord.
+  const tracePipes = (cell, tile) => {
+    const off = world.nbrOff[cell];
+    const px = pos[cell * 3], py = pos[cell * 3 + 1], pz = pos[cell * 3 + 2];
+    for (let d = 0; d < tile.edges.length; d++) {
+      if (!tile.edges[d]) continue;
+      const e = (off + d) * 3;
+      const ex = ends[e], ey = ends[e + 1], ez = ends[e + 2];
+      for (let s = 0; s <= ARC_STEPS; s++) {
+        const u = s / ARC_STEPS;
+        let x = px + (ex - px) * u;
+        let y = py + (ey - py) * u;
+        let z = pz + (ez - pz) * u;
+        const l = Math.hypot(x, y, z);
+        project(x / l, y / l, z / l);
+        if (s === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      }
+    }
+  };
+
+  // Far side first, batched into one path, so the globe fill lays over it.
+  ctx.beginPath();
+  for (let cell = 0; cell < world.n; cell++) {
+    if (count[cell] !== 1) continue;
+    project(pos[cell * 3], pos[cell * 3 + 1], pos[cell * 3 + 2]);
+    if (rz > horizon) continue;
+    tracePipes(cell, tilesFor(world.deg[cell])[soleTile(cell)]);
+  }
+  ctx.strokeStyle = 'rgba(240,239,236,0.55)';
+  ctx.lineWidth = lw * 0.8;
+  ctx.stroke();
+
+  const silR = R * dist / Math.sqrt(dist * dist - 1);
+  const glow = ctx.createRadialGradient(cx - silR * 0.3, cy - silR * 0.35, silR * 0.05, cx, cy, silR);
+  glow.addColorStop(0, 'rgba(58,58,58,0.86)');
+  glow.addColorStop(1, 'rgba(28,28,28,0.95)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, silR, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(240,239,236,0.09)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Near side. Cells fade a little towards the limb, which is what makes
+  // the thing read as a ball rather than a disc. Settled cells are grouped
+  // into a few paths by that fade; only the glowing ones are drawn singly.
+  const BANDS = 4;
+  const bands = [];
+  for (let i = 0; i < BANDS; i++) bands.push([]);
+  const glowing = [];
+  const rings = [];
+
+  for (let cell = 0; cell < world.n; cell++) {
+    project(pos[cell * 3], pos[cell * 3 + 1], pos[cell * 3 + 2]);
+    if (rz <= horizon) continue;
+    if (count[cell] !== 1) {
+      if (cfg.ghost) rings.push(cell, sx, sy);
+      continue;
+    }
+    if (heatOf(cell) > 0.02) { glowing.push(cell, rz); continue; }
+    const depth = (rz - horizon) / (1 - horizon);      // 0 at the limb, 1 facing us
+    bands[Math.min(BANDS - 1, (depth * BANDS) | 0)].push(cell, sx, sy);
+  }
+
+  if (rings.length) {
+    ctx.lineWidth = Math.max(0.5, lw * 0.5);
+    for (let i = 0; i < rings.length; i += 3) {
+      const cell = rings[i];
+      const certainty = 1 - (count[cell] - 1) / (world.size[cell] - 1);
+      ctx.strokeStyle = 'rgba(240,239,236,' + (0.05 + 0.16 * certainty).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(rings[i + 1], rings[i + 2], R * world.spacing * 0.5 * (0.18 + 0.5 * (1 - certainty)), 0, TAU);
+      ctx.stroke();
+    }
+  }
+
+  for (let i = 0; i < BANDS; i++) {
+    const list = bands[i];
+    if (!list.length) continue;
+    const fade = 0.66 + 0.34 * ((i + 0.5) / BANDS);
+    ctx.beginPath();
+    for (let k = 0; k < list.length; k += 3) {
+      const cell = list[k];
+      const tile = tilesFor(world.deg[cell])[soleTile(cell)];
+      tracePipes(cell, tile);
+      if (tile.degree > 0) {
+        const r = lw * (tile.degree > 2 ? 1.1 : 0.7);
+        ctx.moveTo(list[k + 1] + r, list[k + 2]);
+        ctx.arc(list[k + 1], list[k + 2], r, 0, TAU);
+      }
+    }
+    ctx.strokeStyle = mix(0, fade);
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < glowing.length; i += 2) {
+    const cell = glowing[i];
+    const depth = (glowing[i + 1] - horizon) / (1 - horizon);
+    const tile = tilesFor(world.deg[cell])[soleTile(cell)];
+    const heat = heatOf(cell);
+    const col = mix(heat, 0.66 + 0.34 * depth);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = lw * (1 + 0.5 * heat);
+    ctx.beginPath();
+    tracePipes(cell, tile);
+    ctx.stroke();
   }
 }
 
@@ -583,6 +965,7 @@ function draw() {
  * Loop
  * ------------------------------------------------------------------ */
 function frame(t) {
+  const dt = now ? Math.min(64, t - now) : 16;
   now = t;
 
   if (!paused) {
@@ -597,6 +980,7 @@ function frame(t) {
     } else if (cfg.loop && now - doneAt > 1600 + TRAIL_MS) {
       reset();
     }
+    if (world.kind === 'sphere' && !dragging) yaw += spin * (dt / 16.7);
   }
 
   draw();
@@ -611,10 +995,12 @@ function frame(t) {
  * ------------------------------------------------------------------ */
 const $ = (id) => document.getElementById(id);
 const ui = {
-  seed: $('mSeed'), open: $('mOpen'), back: $('mBack'),
-  state: $('mState'), tiles: $('mTiles'),
+  seed: $('mSeed'), open: $('mOpen'), back: $('mBack'), state: $('mState'),
+  tiles: $('mTiles'), cells: $('mCells'),
   panel: $('panel'), pause: $('bPause'),
-  square: $('bSquare'), hex: $('bHex'),
+  grid: $('sGrid'), gridLabel: $('lGrid'), gridValue: $('vGrid'),
+  seal: $('cSeal'), sealRow: $('wSeal'),
+  square: $('bSquare'), hex: $('bHex'), sphere: $('bSphere'),
 };
 
 const bind = (slider, label, key, fmt, restart) => {
@@ -630,11 +1016,34 @@ const bind = (slider, label, key, fmt, restart) => {
   sync();
 };
 
-bind('sGrid', 'vGrid', 'grid', (x) => x + ' × ' + x, true);
 bind('sSpeed', 'vSpeed', 'speed', (x) => x.toFixed(1));
 bind('sBlank', 'vBlank', 'blank', (x) => x.toFixed(1));
 bind('sJunction', 'vJunction', 'junction', (x) => x.toFixed(1));
 bind('sWidth', 'vWidth', 'width', (x) => x.toFixed(1));
+
+// One slider, two meanings: cells per side on the flat lattices, and how
+// often the icosahedron is subdivided on the sphere.
+function showGridValue() {
+  ui.gridValue.textContent = cfg.mode === 'sphere'
+    ? '÷ ' + cfg.freq
+    : cfg.grid + ' × ' + cfg.grid;
+}
+function syncGridControl() {
+  const sphere = cfg.mode === 'sphere';
+  ui.grid.min = sphere ? 2 : 4;
+  ui.grid.max = sphere ? 10 : 48;
+  ui.grid.value = sphere ? cfg.freq : cfg.grid;
+  ui.gridLabel.textContent = sphere ? 'Subdivision' : 'Grid';
+  ui.sealRow.classList.toggle('off', sphere);
+  ui.seal.disabled = sphere;
+  showGridValue();
+}
+ui.grid.addEventListener('input', () => {
+  const v = parseInt(ui.grid.value, 10);
+  if (cfg.mode === 'sphere') cfg.freq = v; else cfg.grid = v;
+  showGridValue();
+  reset();
+});
 
 const bindCheck = (id, key, restart) => {
   const el = $(id);
@@ -648,14 +1057,18 @@ bindCheck('cSeal', 'seal', true);
 bindCheck('cGhost', 'ghost', false);
 bindCheck('cLoop', 'loop', false);
 
+const MODES = ['square', 'hex', 'sphere'];
 function setMode(mode) {
   cfg.mode = mode;
   ui.square.setAttribute('aria-pressed', String(mode === 'square'));
   ui.hex.setAttribute('aria-pressed', String(mode === 'hex'));
+  ui.sphere.setAttribute('aria-pressed', String(mode === 'sphere'));
+  syncGridControl();
   reset();
 }
 ui.square.addEventListener('click', () => setMode('square'));
 ui.hex.addEventListener('click', () => setMode('hex'));
+ui.sphere.addEventListener('click', () => setMode('sphere'));
 
 const setPaused = (p) => {
   paused = p;
@@ -666,6 +1079,28 @@ $('bRestart').addEventListener('click', () => reset());
 ui.pause.addEventListener('click', () => setPaused(!paused));
 $('toggle').addEventListener('click', () => { ui.panel.hidden = !ui.panel.hidden; });
 
+// Drag the globe around.
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+canvas.addEventListener('pointerdown', (ev) => {
+  if (cfg.mode !== 'sphere') return;
+  dragging = true;
+  lastX = ev.clientX;
+  lastY = ev.clientY;
+  canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener('pointermove', (ev) => {
+  if (!dragging) return;
+  yaw += (ev.clientX - lastX) * 0.006;
+  pitch = Math.max(-1.35, Math.min(1.35, pitch + (ev.clientY - lastY) * 0.006));
+  lastX = ev.clientX;
+  lastY = ev.clientY;
+});
+const endDrag = () => { dragging = false; };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
 window.addEventListener('keydown', (ev) => {
   // Let a focused slider or button keep its own keys (Space activates a button).
   const tag = ev.target && ev.target.tagName;
@@ -674,12 +1109,14 @@ window.addEventListener('keydown', (ev) => {
   if (k === 'h') ui.panel.hidden = !ui.panel.hidden;
   else if (k === ' ') { ev.preventDefault(); setPaused(!paused); }
   else if (k === 'r') reset();
-  else if (k === 'g') setMode(cfg.mode === 'square' ? 'hex' : 'square');
+  else if (k === 'g') setMode(MODES[(MODES.indexOf(cfg.mode) + 1) % MODES.length]);
   else if (k === 'f') {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen?.();
   }
 });
+
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) spin = 0;
 
 resize();
 setMode('square');

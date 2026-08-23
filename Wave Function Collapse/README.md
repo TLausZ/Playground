@@ -80,13 +80,15 @@ rather than a disc. Drag to turn it; it drifts on its own otherwise.
 
 ## Taking the ball apart
 
-Turn **Lift** up and the globe comes apart into the shapes its own pipes cut
-out. A shape is whatever the pipes enclose: mostly irregular, running across as
-many cells as the pipes let it, and at its smallest a single triangle between
-three junctions. Bigger shapes sink towards the centre, smaller ones rise, on a
-log scale, because one shape can cover half the globe while two dozen others are
-corner triangles and spreading those by their raw size would flatten every
-triangle onto one value.
+Tick **Lift the shapes** and the globe comes apart into the shapes its own pipes
+cut out. A shape is whatever the pipes enclose: mostly irregular, running across
+as many cells as the pipes let it, and at its smallest a single triangle between
+three junctions. Bigger shapes sink towards the centre, smaller ones rise, over
+five steps. The sizes are ranked on a log scale first, because one shape can
+cover half the globe while two dozen others are corner triangles and spreading
+those by their raw size would flatten every triangle onto one value; the five
+steps then stop a hundred shapes from each hovering at a height of their own,
+which reads as noise.
 
 Finding the shapes takes union-find and nothing else. Each cell is cut into
 wedges, one per corner. A pipe leaving through an edge walls off the two wedges
@@ -99,10 +101,14 @@ edge carries a pipe has to give a triangle per corner, which on a sphere is
 
 Wedges also settle the question of how a shape spanning several cells can sit
 on a curved surface: each wedge is projected on its own, so the shape bends
-along the cell edges it crosses instead of having to stay flat. The pipes fade
-out as the lift comes up, since a pipe between two shapes at different heights
-has two places it could be; each shape then draws its own edge at its own
-radius, which turns the seam into a visible step.
+along the cell edges it crosses instead of having to stay flat.
+
+Lifted, the pipes are gone from the surface. A pipe between two shapes at
+different heights has two places it could be, and drawn on the ball it would
+lay lines across the shapes rather than around them. Each shape draws its own
+outline at its own radius instead, so a seam comes out as a step, and a pipe
+with the same shape on both sides is left out: it is a spur reaching into a
+shape, not an edge of one.
 
 ## Controls
 
@@ -116,7 +122,7 @@ Press `H` or the ☰ button for the panel.
 | Blanks | How strongly empty tiles are favoured — high leaves islands, 0 fills the grid |
 | Junctions | Weight of tees and crosses, the tiles that make pipes branch |
 | Line width | Thickness of the pipes |
-| Lift | How far the shapes ride off the sphere, by their size (sphere only) |
+| Lift the shapes | Pull the shapes off the sphere by their size (sphere only) |
 | Seal the border | Forbid pipes that would leave the grid (a sphere has no border) |
 | Show uncertainty | Draw the undecided cells |
 | Restart when done | Reseed a moment after the map settles |

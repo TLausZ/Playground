@@ -22,9 +22,10 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     <img src="Pool%20Caustics/screenshot.jpg" alt="Pool Caustics">
   </a>
   <p>
-    readme: <strong><a href="Pool%20Caustics/">Pool Caustics</a></strong><br>
+    <strong><a href="Pool%20Caustics/">Pool Caustics</a></strong><br>
     The light reflections drifting across a swimming pool surface,
     recreated in a single HTML file.<br>
+    readme: <a href="Pool%20Caustics/README.md">/Pool Caustics/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/Pool%20Caustics/">/Pool Caustics/</a>
   </p>
 </td>
@@ -33,8 +34,9 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     <img src="MJzoom01/TLausZ_isometric_Bitcoin_B_--sref_3879714017_--stylize_0_--v__4c34480c-7778-472c-b259-6f000b9bfd81_2.png" alt="Whackaddodle MJ zoom">
   </a>
   <p>
-    readme: <strong><a href="MJzoom01/">Whackaddodle MJ zoom</a></strong><br>
+    <strong><a href="MJzoom01/">Whackaddodle MJ zoom</a></strong><br>
     Midjourney zoom-out steps stitched back into one continuous camera move.<br>
+    readme: <a href="MJzoom01/README.md">/MJzoom01/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/MJzoom01/">/MJzoom01/</a>
   </p>
 </td>
@@ -45,10 +47,11 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     <img src="Wave%20Function%20Collapse/screenshot.jpg" alt="Wave Function Collapse">
   </a>
   <p>
-    readme: <strong><a href="Wave%20Function%20Collapse/">Wave Function Collapse</a></strong><br>
+    <strong><a href="Wave%20Function%20Collapse/">Wave Function Collapse</a></strong><br>
     A tile map that builds itself: the least certain cell picks a tile, the
     constraint propagates, and the grid settles — on squares, on hexagons, or
     wrapped around a globe.<br>
+    readme: <a href="Wave%20Function%20Collapse/README.md">/Wave Function Collapse/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/Wave%20Function%20Collapse/">/Wave Function Collapse/</a>
   </p>
 </td>
@@ -60,11 +63,12 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     <img src="bitcoin-halving-animation/screenshot-circles.jpg" alt="Bitcoin Halving Animation, circles scene" width="49%">
   </a>
   <p>
-    readme: <strong><a href="bitcoin-halving-animation/">Bitcoin Halving Animation</a></strong><br>
+    <strong><a href="bitcoin-halving-animation/">Bitcoin Halving Animation</a></strong><br>
     Eight nested shapes for the block-reward epochs, hinged in a chain that
     opens and folds back. Squares hinge at a corner, circles where they touch;
     the area underneath traces every rotation, so the overlaps darken toward
     the centre.<br>
+    readme: <a href="bitcoin-halving-animation/README.md">/bitcoin-halving-animation/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/bitcoin-halving-animation/">/bitcoin-halving-animation/</a>
   </p>
 </td>

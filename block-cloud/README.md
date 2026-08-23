@@ -19,15 +19,10 @@ single instanced mesh, so a full block stays interactive.
 
 ## Running it
 
-The page needs a network connection: it loads Three.js from a CDN import map and
-the block data from the mempool.space API. Over `file://` the API call is blocked,
-so serve the folder:
-
-```
-python3 -m http.server
-```
-
-Then open `http://localhost:8000/block-cloud/`.
+Double-click `index.html`. What the page does need is a network connection: it
+loads Three.js from a CDN import map and the block data from the mempool.space
+API. Both are served with permissive CORS headers, so they also load from a
+`file://` page (checked in Chrome).
 
 The interface is in German, with Swiss number formatting.
 

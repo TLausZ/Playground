@@ -50,4 +50,19 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   </p>
 </td>
 </tr>
+<tr>
+<td colspan="2" valign="top">
+  <a href="bitcoin-halving-animation/">
+    <img src="bitcoin-halving-animation/screenshot-squares.jpg" alt="Bitcoin Halving Animation, squares scene" width="49%">
+    <img src="bitcoin-halving-animation/screenshot-circles.jpg" alt="Bitcoin Halving Animation, circles scene" width="49%">
+  </a>
+  <p>
+    <strong><a href="bitcoin-halving-animation/">Bitcoin Halving Animation</a></strong><br>
+    Eight nested shapes for the block-reward epochs, hinged in a chain that
+    opens and folds back. Squares hinge at a corner, circles where they touch;
+    the area underneath traces every rotation, so the overlaps darken toward
+    the centre.
+  </p>
+</td>
+</tr>
 </table>

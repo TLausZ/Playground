@@ -11,7 +11,8 @@ nothing to build.
 Three lattices, same algorithm: **square** draws the classic pipe grid,
 **hexagon** runs the identical rules on a honeycomb, where six edges per cell
 turn the pipes into lace, and **sphere** wraps the whole thing around a globe
-you can spin. Switch with the buttons or `G`.
+you can spin. Switch with the buttons or `G`. The choice sits in the fragment,
+`index.html#sphere`, so a bookmark comes back to the lattice it was made on.
 
 ## How it works
 
@@ -103,12 +104,44 @@ Wedges also settle the question of how a shape spanning several cells can sit
 on a curved surface: each wedge is projected on its own, so the shape bends
 along the cell edges it crosses instead of having to stay flat.
 
+A shape is a solid, not a floating plate: its cap sits at its own radius and a
+wall closes the step down to each shape beside it. The step is the thing:
+a wall spans from one shape's radius to its neighbour's, and only the higher of
+the two draws it. Carrying both down to the sphere instead would stack two
+walls in two colours where one face belongs, which is what a wall in a single
+shade looks like when it is really two. Shapes at the same height share no step
+and get no wall.
+
+The wall normal is horizontal and square to the pipe above it, so a fixed
+light (held in camera space, so the globe turns under it rather than carrying
+it along) shades each wall by which way it faces, and the caps by how they
+lean away. Where a shape turns a corner its walls meet at around 120 degrees,
+so the two really are different faces and take different shades.
+
+Caps and walls go into one list and are painted back to front, and nothing is
+dropped for facing away or for sitting behind the horizon. Culling either way
+makes faces blink out as the globe turns them past the threshold, and a shape
+standing off the ball genuinely does show over the silhouette, so there is
+nothing to cull. The core is painted where the list crosses the horizon, which
+leaves it covering what is behind it and no more.
+
+That core sits at the radius of the deepest shape, not at the sphere's own. At
+the sphere's radius its rim shows between the shapes that sank below it and the
+ones that rose above, as a dark band running round the globe where nothing is
+drawn at that radius. Tucked under the deepest shape it never shows. Faces no
+further out than the core are the one thing skipped once they are behind it,
+since those project inside its silhouette and no part of them could show.
+Sampling the canvas over 24 camera positions, nothing inside the core's outline
+is left uncovered.
+
 Lifted, the pipes are gone from the surface. A pipe between two shapes at
 different heights has two places it could be, and drawn on the ball it would
 lay lines across the shapes rather than around them. Each shape draws its own
 outline at its own radius instead, so a seam comes out as a step, and a pipe
-with the same shape on both sides is left out: it is a spur reaching into a
-shape, not an edge of one.
+with the same shape on both sides carries neither wall nor line: it is a spur
+reaching into a shape, not an edge of one. Shapes on the lowest step draw no
+outline at all: everything around them stands over it, so what showed of it
+read as a broken line rather than an edge.
 
 ## Controls
 
@@ -122,7 +155,7 @@ Press `H` or the ☰ button for the panel.
 | Blanks | How strongly empty tiles are favoured: high leaves islands, 0 fills the grid |
 | Junctions | Weight of tees and crosses, the tiles that make pipes branch |
 | Line width | Thickness of the pipes |
-| Lift the shapes | Pull the shapes off the sphere by their size (sphere only) |
+| Lift the shapes | Stand the shapes off the sphere as solids, by their size (sphere only) |
 | Seal the border | Forbid pipes that would leave the grid (a sphere has no border) |
 | Show uncertainty | Draw the undecided cells |
 | Restart when done | Reseed a moment after the map settles |

@@ -191,7 +191,7 @@
  *
  * The solver never learns which lattice it is on. It asks the world for
  * a cell's neighbours and, for each of them, which edge of the neighbour
- * faces back, and that pairing is all the geometry it needs. Squares have
+ * faces back: that pairing is all the geometry it needs. Squares have
  * four edges, hexagons six, and the sphere mixes five and six.
  * ================================================================== */
 
@@ -979,6 +979,13 @@ let spin = 0.0022;
 let ARC_STEPS = 4;
 const LIFT_RANGE = 0.14;   // radius the biggest and smallest shapes trade
 
+// A fixed light, in camera space rather than world space: the globe turns
+// under it, so a face keeps its shading as it comes round instead of the
+// whole ball lighting up at once. Direction is from the upper left, towards
+// the viewer.
+const SUN = { x: -0.42, y: 0.62, z: 0.66, ambient: 0.42, diffuse: 0.62 };
+const byte = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
+
 function drawSphere() {
   const R = Math.min(W, H) * 0.34;
   const cx = W / 2;
@@ -1013,9 +1020,31 @@ function drawSphere() {
   if (spread) findRegions();
   const radOf = (root) => 1 + spread * regionLift.get(root);
 
-  // One pipe: centre out to the midpoint of edge k, following the surface,
-  // so it comes out as a short arc rather than a chord.
-  const traceSpoke = (cell, k, r) => {
+  const corners = world.corners;
+
+  // Rotate without projecting, for the surface normals the shading needs.
+  let nx = 0, ny = 0, nz = 0;
+  const rotate = (x, y, z) => {
+    const x1 = x * cyaw + z * syaw;
+    const z1 = -x * syaw + z * cyaw;
+    nx = x1;
+    ny = y * cpit - z1 * spit;
+    nz = y * spit + z1 * cpit;
+  };
+  // Lambert against the fixed light, on an already rotated normal.
+  const lit = (r0, g0, b0) => {
+    const l = Math.hypot(nx, ny, nz) || 1;
+    const lam = Math.max(0, (nx * SUN.x + ny * SUN.y + nz * SUN.z) / l);
+    const f = SUN.ambient + SUN.diffuse * lam;
+    return 'rgb(' + byte(r0 * f) + ',' + byte(g0 * f) + ',' + byte(b0 * f) + ')';
+  };
+
+  // One pipe: centre out to the midpoint of edge k, following the surface, so
+  // it comes out as a short arc rather than a chord. The points land in a
+  // buffer, because the wall below the pipe has to walk the same arc back.
+  const arcA = [], arcB = [];
+  const spokeInto = (cell, k, r, out) => {
+    out.length = 0;
     const px = pos[cell * 3], py = pos[cell * 3 + 1], pz = pos[cell * 3 + 2];
     const e = (world.nbrOff[cell] + k) * 3;
     const ex = ends[e], ey = ends[e + 1], ez = ends[e + 2];
@@ -1026,7 +1055,13 @@ function drawSphere() {
       const z = pz + (ez - pz) * u;
       const l = Math.hypot(x, y, z) / r;
       project(x / l, y / l, z / l);
-      if (s === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      out.push(sx, sy);
+    }
+  };
+  const traceSpoke = (cell, k, r) => {
+    spokeInto(cell, k, r, arcA);
+    for (let i = 0; i < arcA.length; i += 2) {
+      if (i === 0) ctx.moveTo(arcA[0], arcA[1]); else ctx.lineTo(arcA[i], arcA[i + 1]);
     }
   };
 
@@ -1034,9 +1069,37 @@ function drawSphere() {
     for (let d = 0; d < tile.edges.length; d++) if (tile.edges[d]) traceSpoke(cell, d, 1);
   };
 
+  // The wall along one edge of a shape: the arc at this shape's radius, then
+  // the same arc back at the neighbouring shape's. A wall is the step between
+  // two shapes, so it spans only the difference and only the higher of the two
+  // draws it: carrying both down to the sphere would stack two walls in two
+  // colours where one face belongs. Its normal is horizontal and square to the
+  // pipe, pointing away from the wedge whose edge this is, which is all the
+  // light needs; nothing is culled by it, the depth sort decides what covers
+  // what.
+  const wallUnder = (cell, k, r, rFoot, awayFrom) => {
+    const lo = world.nbrOff[cell];
+    const e = (lo + k) * 3, c3 = cell * 3;
+    // tangent along the pipe, crossed with the radius, gives the wall normal
+    const tx = ends[e] - pos[c3], ty = ends[e + 1] - pos[c3 + 1], tz = ends[e + 2] - pos[c3 + 2];
+    let wx = ty * pos[c3 + 2] - tz * pos[c3 + 1];
+    let wy = tz * pos[c3] - tx * pos[c3 + 2];
+    let wz = tx * pos[c3 + 1] - ty * pos[c3];
+    const a3 = awayFrom * 3;
+    if (wx * (corners[a3] - pos[c3]) + wy * (corners[a3 + 1] - pos[c3 + 1])
+      + wz * (corners[a3 + 2] - pos[c3 + 2]) > 0) { wx = -wx; wy = -wy; wz = -wz; }
+    rotate(wx, wy, wz);
+    spokeInto(cell, k, r, arcA);
+    spokeInto(cell, k, rFoot, arcB);
+    ctx.beginPath();
+    ctx.moveTo(arcA[0], arcA[1]);
+    for (let i = 2; i < arcA.length; i += 2) ctx.lineTo(arcA[i], arcA[i + 1]);
+    for (let i = arcB.length - 2; i >= 0; i -= 2) ctx.lineTo(arcB[i], arcB[i + 1]);
+    ctx.closePath();
+  };
+
   // One wedge: the cell centre, the midpoint of edge k, the corner beyond
   // it, and the midpoint of the next edge back.
-  const corners = world.corners;
   const traceWedge = (cell, k, r) => {
     const lo = world.nbrOff[cell], d = world.deg[cell];
     const a = (lo + k) * 3, b = (lo + (k + 1) % d) * 3;
@@ -1065,80 +1128,142 @@ function drawSphere() {
     ctx.stroke();
   }
 
-  const silR = R * dist / Math.sqrt(dist * dist - 1);
-  const glow = ctx.createRadialGradient(cx - silR * 0.3, cy - silR * 0.35, silR * 0.05, cx, cy, silR);
-  glow.addColorStop(0, 'rgba(58,58,58,0.86)');
-  glow.addColorStop(1, 'rgba(28,28,28,0.95)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(cx, cy, silR, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(240,239,236,0.09)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  // The core the shapes stand on. It has to sit under the deepest of them: at
+  // the sphere's own radius its rim shows through between the sunk shapes and
+  // the raised ones as a dark band round the globe, since nothing is drawn out
+  // there at that radius. Tucked to the deepest shape it never shows at all.
+  const coreR = spread ? 1 - LIFT_RANGE : 1;
+  const silR = R * coreR * dist / Math.sqrt(dist * dist - coreR * coreR);
+  const paintCore = () => {
+    const glow = ctx.createRadialGradient(cx - silR * 0.3, cy - silR * 0.35, silR * 0.05, cx, cy, silR);
+    glow.addColorStop(0, spread ? 'rgba(30,30,30,0.94)' : 'rgba(58,58,58,0.86)');
+    glow.addColorStop(1, spread ? 'rgba(14,14,14,0.98)' : 'rgba(28,28,28,0.95)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, silR, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(240,239,236,0.09)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  };
+  if (!spread) paintCore();
 
-  // The shapes, back to front, one wedge at a time. Wedges of the same shape
-  // sit at the same radius and take the same colour, so they read as one
-  // piece; filling and stroking each in that colour hides the seam Canvas
-  // otherwise leaves between two polygons sharing an edge.
-  // ponytail: an object per visible wedge per frame, fine up to ~1000 cells;
-  // sort an index array over a flat buffer if the globe ever gets finer.
+  // Every face that gets painted goes into one list, caps and walls together,
+  // and the list is sorted by depth. Nothing is dropped for facing away or for
+  // sitting behind the horizon: a face culled that way blinks out the moment
+  // the globe turns it past the threshold, and a shape standing off the ball
+  // genuinely does show over the silhouette. The core is painted at the point
+  // the list crosses the horizon, so it covers what is behind it and no more.
+  // ponytail: an object per face per frame plus one sort, ~10 ms at 1000
+  // cells; pack into a flat buffer and sort an index array if it gets finer.
   if (spread) {
-    const wedges = [];
+    const CAP = 0, WALL = 1;
+    const faces = [];
+    const at = (kind, cell, k, own, r, ax, ay, az, bx, by, bz, mr, rFoot) => {
+      project((ax + bx) / 2 * mr, (ay + by) / 2 * mr, (az + bz) / 2 * mr);
+      faces.push({ kind, cell, k, own, r, rFoot, root: regionRoot[own], z: rz });
+    };
     for (let cell = 0; cell < world.n; cell++) {
       if (count[cell] !== 1) continue;
       const lo = world.nbrOff[cell], d = world.deg[cell];
+      const tile = tilesFor(d)[soleTile(cell)];
+      const c3 = cell * 3;
       for (let k = 0; k < d; k++) {
-        const root = regionRoot[lo + k];
+        const own = lo + k;
+        const root = regionRoot[own];
         if (root < 0) continue;
         const r = radOf(root);
-        project(pos[cell * 3] * r, pos[cell * 3 + 1] * r, pos[cell * 3 + 2] * r);
-        if (rz <= horizon) continue;
-        wedges.push({ cell, k, r, rz, root });
+        const a3 = own * 3;
+        // The cap's depth comes from halfway out to its corner, so wedges of
+        // one cell sort against each other rather than all sharing its centre.
+        at(CAP, cell, k, own, r, pos[c3], pos[c3 + 1], pos[c3 + 2],
+          corners[a3], corners[a3 + 1], corners[a3 + 2], r);
+        const prev = (k + d - 1) % d, next = (k + 1) % d;
+        // A wall is the step down to the shape across the pipe, so it is the
+        // higher shape's to draw and the lower one skips it. Same height, no
+        // step and no wall.
+        const step = (spoke, acrossWedge) => {
+          const across = regionRoot[acrossWedge];
+          if (across < 0) return;
+          const rFoot = radOf(across);
+          if (r <= rFoot) return;
+          const e3 = (lo + spoke) * 3;
+          at(WALL, cell, spoke, own, r, pos[c3], pos[c3 + 1], pos[c3 + 2],
+            ends[e3], ends[e3 + 1], ends[e3 + 2], (r + rFoot) / 2, rFoot);
+        };
+        if (tile.edges[k] && regionRoot[lo + prev] !== root) step(k, lo + prev);
+        if (tile.edges[next] && regionRoot[lo + next] !== root) step(next, lo + next);
       }
     }
-    wedges.sort((a, b) => a.rz - b.rz);
+    faces.sort((a, b) => a.z - b.z);
 
-    for (const w of wedges) {
-      const depth = (w.rz - horizon) / (1 - horizon);
-      // Small shapes ride high and read light, big ones sink and go dark,
-      // so the colour says the same thing the height does.
-      const base = (26 + 104 * (regionLift.get(w.root) + 1) / 2) * (0.55 + 0.45 * depth);
-      const warm = heatOf(w.cell) * 0.55;
+    // What the core covers can still be skipped, which is not the same as
+    // culling: a face no further out than the core projects inside the core's
+    // silhouette, so once it is behind the core nothing of it could show. The
+    // margin keeps a face straddling the horizon, since only its centre is
+    // tested here. Everything further out is drawn, because out there the core
+    // is not what hides it: the shapes in front are, and they are only as
+    // solid as the depth sort makes them.
+    const behind = horizon - world.spacing;
+    let cored = false;
+    for (const f of faces) {
+      if (!cored && f.z > horizon) { paintCore(); cored = true; }
+      if (f.r <= coreR && f.z < behind) continue;
+
+      // Small shapes ride high and read light, big ones sink and go dark, so
+      // the colour says the same thing the height does. The light does the
+      // rest of the shading.
+      const g = 88 + 76 * (regionLift.get(f.root) + 1) / 2;
+      const warm = heatOf(f.cell) * 0.55;
+      const cr = g + (HOT[0] - g) * warm;
+      const cg = g + (HOT[1] - g) * warm;
+      const cb = g + (HOT[2] - g) * warm;
+
+      if (f.kind === WALL) {
+        wallUnder(f.cell, f.k, f.r, f.rFoot, f.own);   // sets normal, traces path
+        ctx.fillStyle = lit(cr, cg, cb);
+        ctx.fill();
+        continue;
+      }
+
+      rotate(pos[f.cell * 3], pos[f.cell * 3 + 1], pos[f.cell * 3 + 2]);
       ctx.beginPath();
-      traceWedge(w.cell, w.k, w.r);
-      ctx.fillStyle = 'rgb('
-        + Math.round(base + (HOT[0] - base) * warm) + ','
-        + Math.round(base + (HOT[1] - base) * warm) + ','
-        + Math.round(base + (HOT[2] - base) * warm) + ')';
+      traceWedge(f.cell, f.k, f.r);
+      ctx.fillStyle = lit(cr, cg, cb);
       ctx.fill();
+      // Stroked in its own colour, to hide the seam Canvas leaves between two
+      // polygons sharing an edge.
       ctx.strokeStyle = ctx.fillStyle;
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // The shape's edge is the pipe that cut it out, drawn at the shape's own
-      // radius. Both shapes along a pipe draw it, each at its own height,
-      // which is what turns a seam into a visible step. A pipe with the same
-      // shape on both sides is not an edge at all but a spur reaching into
-      // one, and drawing it would put a line across a shape.
-      const lo = world.nbrOff[w.cell], d = world.deg[w.cell];
-      const tile = tilesFor(d)[soleTile(w.cell)];
-      const next = (w.k + 1) % d;
-      const here = tile.edges[w.k] && regionRoot[lo + (w.k + d - 1) % d] !== w.root;
-      const after = tile.edges[next] && regionRoot[lo + next] !== w.root;
-      if (here || after) {
+      // The shape's edge, at its own radius. Both shapes along a pipe draw it,
+      // each at its own height, which is what turns a seam into a step. A pipe
+      // with the same shape on both sides is a spur reaching into it, not an
+      // edge of it, and carries neither wall nor line.
+      const lo = world.nbrOff[f.cell], d = world.deg[f.cell];
+      const tile = tilesFor(d)[soleTile(f.cell)];
+      const next = (f.k + 1) % d;
+      const here = tile.edges[f.k] && regionRoot[lo + (f.k + d - 1) % d] !== f.root;
+      const after = tile.edges[next] && regionRoot[lo + next] !== f.root;
+      // Not on the lowest step. Everything around a shape down there stands
+      // over it, so its outline comes out half covered, which reads as a
+      // broken line rather than an edge.
+      if ((here || after) && regionLift.get(f.root) > -1) {
+        const depth = Math.max(0, (f.z - horizon) / (1 - horizon));
         ctx.beginPath();
-        if (here) traceSpoke(w.cell, w.k, w.r);
-        if (after) traceSpoke(w.cell, next, w.r);
-        ctx.strokeStyle = mix(heatOf(w.cell), 0.42 + 0.48 * depth);
+        if (here) traceSpoke(f.cell, f.k, f.r);
+        if (after) traceSpoke(f.cell, next, f.r);
+        ctx.strokeStyle = mix(heatOf(f.cell), 0.42 + 0.48 * depth);
         ctx.lineWidth = Math.max(0.8, lw * 0.42);
         ctx.stroke();
       }
     }
+    if (!cored) paintCore();
   }
 
-  // Near side, back to front. The fade is per cell now rather than batched
-  // into four bands, which also loses the banding it used to show.
+  // Near side, back to front. The fade is per cell rather than batched into
+  // four bands, which also loses the banding that used to show.
   const order = [];
   const rings = [];
 
@@ -1153,6 +1278,7 @@ function drawSphere() {
   }
   order.sort((a, b) => a.rz - b.rz);
 
+  // Cells still making up their mind, whatever the shapes are doing.
   if (rings.length) {
     ctx.lineWidth = Math.max(0.5, lw * 0.5);
     for (let i = 0; i < rings.length; i += 3) {
@@ -1287,8 +1413,13 @@ bindCheck('cGhost', 'ghost', false);
 bindCheck('cLoop', 'loop', false);
 
 const MODES = ['square', 'hex', 'sphere'];
+// The mode lives in the fragment, so a bookmark comes back to the lattice it
+// was made on and the back button steps through the ones visited.
+const modeFromHash = () => MODES.find((m) => m === location.hash.slice(1));
+
 function setMode(mode) {
   cfg.mode = mode;
+  if (location.hash.slice(1) !== mode) location.hash = mode;
   ui.square.setAttribute('aria-pressed', String(mode === 'square'));
   ui.hex.setAttribute('aria-pressed', String(mode === 'hex'));
   ui.sphere.setAttribute('aria-pressed', String(mode === 'sphere'));
@@ -1347,8 +1478,13 @@ window.addEventListener('keydown', (ev) => {
 
 if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) spin = 0;
 
+window.addEventListener('hashchange', () => {
+  const m = modeFromHash();
+  if (m && m !== cfg.mode) setMode(m);
+});
+
 resize();
-setMode('square');
+setMode(modeFromHash() || cfg.mode);
 requestAnimationFrame(frame);
 </script>
 </body>

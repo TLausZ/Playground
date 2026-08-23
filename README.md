@@ -17,7 +17,7 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 
 <table>
 <tr>
-<td width="55%" valign="top">
+<td colspan="2" valign="top">
   <a href="Pool%20Caustics/">
     <img src="Pool%20Caustics/preview.webp" alt="Pool Caustics">
   </a>
@@ -29,7 +29,9 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
     live: <a href="https://tlausz.github.io/Playground/Pool%20Caustics/">/Pool Caustics/</a>
   </p>
 </td>
-<td width="45%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
   <a href="MJzoom01/">
     <img src="MJzoom01/preview.webp" alt="Whackaddodle MJ zoom">
   </a>

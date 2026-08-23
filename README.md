@@ -73,4 +73,19 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   </p>
 </td>
 </tr>
+<tr>
+<td colspan="2" valign="top">
+  <a href="collatz-visualizer/">
+    <img src="collatz-visualizer/docs/all-view.png" alt="Collatz Visualizer">
+  </a>
+  <h3><a href="collatz-visualizer/">Collatz Visualizer</a></h3>
+  <p>
+    The Collatz sequences for the start values 1 to 1000. Hover the number line
+    to pick one and watch it hop — halve when even, triple and add one when odd
+    — until it lands on 1.<br>
+    readme: <a href="collatz-visualizer/README.md">/collatz-visualizer/README.md</a><br>
+    live: <a href="https://tlausz.github.io/Playground/collatz-visualizer/">/collatz-visualizer/</a>
+  </p>
+</td>
+</tr>
 </table>

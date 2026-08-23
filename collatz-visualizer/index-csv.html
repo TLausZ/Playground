@@ -1,0 +1,712 @@
+<meta charset="utf-8">
+<title>Collatz Visualizer</title>
+<style>
+  :root {
+    --paper: #ece2cd; --paper-bright: #f2ead6;
+    --ink: #5c4a34; --ink-soft: #6b5a42; --ink-faint: #8a7a5e;
+    --line: rgba(74,58,40,0.68); --line-shadow: rgba(110,92,64,0.07);
+    --border: rgba(110,92,64,0.25); --border-strong: rgba(110,92,64,0.4);
+    --accent: rgba(150,90,50,0.95); --accent-line: rgba(120,70,40,0.85);
+    --accent-box: rgba(92,74,52,0.97);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header { padding: 16px; border-bottom: 1px solid var(--border); }
+  .row { display: flex; align-items: center; gap: 14px; }
+  h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  .formula { font-size: 13px; color: var(--ink-soft); }
+  .formula em { font-style: normal; color: var(--ink-faint); }
+  .info { position: relative; display: inline-flex; }
+  .info .infomark {
+    cursor: default;
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 1px solid var(--border-strong); color: var(--ink-faint);
+    font-size: 10px; line-height: 13px; text-align: center;
+  }
+  .info:hover .infomark, .info:focus-within .infomark { border-color: var(--ink); color: var(--ink); }
+  .info .infobox {
+    position: absolute; top: 22px; left: 0; z-index: 1;
+    width: 260px; background: var(--accent-box); color: var(--paper-bright);
+    padding: 10px 12px; font-size: 12px; line-height: 1.5;
+    visibility: hidden; opacity: 0;
+  }
+  .info:hover .infobox, .info:focus-within .infobox { visibility: visible; opacity: 1; }
+  .controls { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+  .speed { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-faint); }
+  .speedrow { display: flex; align-items: center; gap: 8px; }
+  .speed input { accent-color: var(--ink); }
+  .speedcap { text-align: center; }
+  .toggles { display: flex; gap: 8px; }
+  .toggle {
+    font: inherit; font-size: 12px; color: var(--ink);
+    background: transparent; border: 1px solid var(--border-strong);
+    border-radius: 4px; padding: 4px 10px; cursor: pointer;
+  }
+  .toggle.on { background: var(--ink); color: var(--paper-bright); border-color: var(--ink); }
+  header p { margin: 6px 0 0; font-size: 12px; color: var(--ink-faint); }
+  #picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .pick {
+    font: inherit; font-size: 12px; color: var(--ink);
+    background: transparent; border: 1px solid var(--border-strong);
+    border-radius: 4px; padding: 4px 9px; cursor: pointer;
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .pick b { font-weight: 600; }
+  .pick span { color: var(--ink-faint); font-size: 11px; }
+  .pick:hover { border-color: var(--ink); }
+  .pick.on { background: var(--ink); color: var(--paper-bright); border-color: var(--ink); }
+  .pick.on span { color: rgba(242,234,214,0.7); }
+  #stage { flex: 1; position: relative; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #tip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--accent-box); color: var(--paper-bright);
+    padding: 8px 10px; font-size: 12px; white-space: nowrap;
+  }
+  #tip b { font-weight: 600; }
+  #tip span { color: rgba(242,234,214,0.7); }
+  #spinner {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; background: var(--paper);
+  }
+  #spinner.hidden { display: none; }
+  /* "circleloader" from codepen.io/r34h87fh/pen/JjQbjK, recoloured to the CI */
+  .circleloader {
+    position: relative; box-sizing: border-box;
+    width: 80px; height: 20px; padding: 4px;
+    border-radius: 16px; background: var(--border);
+  }
+  .circleloader::before {
+    content: ''; position: absolute; left: 0;
+    width: 20px; height: 12px; border-radius: 16px;
+    background: var(--ink); animation: push 1s infinite linear;
+  }
+  @keyframes push { 50% { left: 56px; } }
+</style>
+
+<header>
+  <div class="row">
+    <h1>Collatz Visualizer</h1>
+    <span class="info" tabindex="0">
+      <span class="infomark">?</span>
+      <span class="infobox">
+        The Collatz conjecture: pick any positive integer, halve it if even, or
+        turn it into 3n + 1 if odd, and repeat. It always seems to end at 1,
+        but nobody has proven it always will. It's still an open problem in
+        mathematics.
+      </span>
+    </span>
+    <span class="formula">f(n) = n / 2 <em>if n is even</em>, &nbsp; 3n + 1 <em>if n is odd</em></span>
+    <div class="controls">
+      <div class="speed">
+        <div class="speedrow">
+          <span>0s</span>
+          <input id="speed" type="range" min="0" max="10000" step="50" value="3000">
+          <span>10s</span>
+        </div>
+        <div class="speedcap">animation speed</div>
+      </div>
+      <span class="toggles">
+        <button id="modeBtn" class="toggle">Steps</button>
+        <button id="logBtn" class="toggle">log scale</button>
+      </span>
+    </div>
+  </div>
+  <p id="sub">loading …</p>
+  <div id="picks"></div>
+</header>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="tip"></div>
+  <div id="spinner"><div class="circleloader"></div></div>
+</div>
+
+<script>
+const CSS = getComputedStyle(document.documentElement);
+const col = n => CSS.getPropertyValue(n).trim();
+const cv = document.getElementById('c');
+let ctx = cv.getContext('2d');   // temporarily repointed at the offscreen cache while rendering the static scene
+const tip = document.getElementById('tip');
+const sub = document.getElementById('sub');
+
+// layout in css pixels
+const M = { l: 62, r: 20, t: 20, b: 34 };   // plot margins (right of the ruler)
+const RULER = 54;                            // width of the number line strip on the left
+let W = 0, H = 0, plot = null;
+let seqs = [];        // seqs[n] = [v0, v1, ...]
+let stats = [];       // stats[n] = {steps, max}
+let globalMax = 1, maxSteps = 1;
+let N = 1000;         // highest start value in the data (set from the rows in main)
+let sel = null;       // selected start value n
+let hoverStep = null; // step index under cursor when inside plot
+let showAll = false;  // "all" pick active: render every PICKS number at once
+let logMode = false;  // linear (fixed) vs logarithmic value axis — start linear
+let mode = 'circles'; // 'circles' (arc view, default) or 'steps' (classic line view)
+let animMs = 3000;    // ms to draw a freshly selected line left to right (set by the slider)
+let animN = null, animT0 = 0, animRAF = 0;
+
+function startAnim() {
+  cancelAnimationFrame(animRAF);
+  const tick = () => {
+    draw();
+    animRAF = (performance.now() - animT0 < animMs) ? requestAnimationFrame(tick) : 0;
+  };
+  animRAF = requestAnimationFrame(tick);
+}
+
+function layout() {
+  const r = cv.getBoundingClientRect();
+  W = r.width; H = r.height;
+  const dpr = devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  plot = {
+    x0: RULER + M.l, y0: M.t,
+    x1: W - M.r, y1: H - M.b,
+  };
+}
+
+// value axis is fixed at the global maximum; the scale never rescales on selection
+function scaleMax() {
+  return globalMax;
+}
+const sx = s => plot.x0 + (s / maxSteps) * (plot.x1 - plot.x0);
+const sy = (v, top) => {
+  const h = plot.y1 - plot.y0;
+  const frac = logMode
+    ? Math.log10(Math.max(v, 1)) / Math.log10(top)   // values are always >= 1
+    : v / top;
+  return plot.y1 - frac * h;
+};
+// ruler maps start value 1..N to a vertical position (top = N)
+const rulerY = n => plot.y1 - ((n - 1) / (N - 1)) * (plot.y1 - plot.y0);
+const yToN = y => Math.round(1 + (plot.y1 - y) / (plot.y1 - plot.y0) * (N - 1));
+
+// arc view value axis maximum: log keeps the global maximum so runs stay
+// comparable; linear uses the selected run's own peak so small start values
+// spread across the width instead of collapsing at the left edge
+function arcMax() {
+  return (!logMode && sel && !showAll) ? stats[sel].max : globalMax;
+}
+const xVal = v => {
+  const frac = logMode
+    ? Math.log10(Math.max(v, 1)) / Math.log10(arcMax())
+    : v / arcMax();
+  return plot.x0 + frac * (plot.x1 - plot.x0);
+};
+
+// trace a sequence into the current path as straight segments
+function tracePath(s, top) {
+  const n = s.length;
+  ctx.moveTo(sx(0), sy(s[0], top));
+  for (let i = 1; i < n; i++) ctx.lineTo(sx(i), sy(s[i], top));
+}
+
+// the static scene (faint paths + axes + ruler) never changes while the cursor
+// moves, so render it once per view into an offscreen canvas and blit it.
+const staticCache = new Map();   // key -> offscreen canvas
+const staticKey = () => `${mode}|${logMode ? 'log' : 'lin'}|${Math.round(W)}x${Math.round(H)}`;
+
+function renderStaticScene() {
+  // arc view keeps the static layer to axes + ruler only; the thousand faint
+  // paths of the line view would be tens of thousands of overlapping arcs
+  if (mode === 'circles') { drawArcAxes(); drawRuler(); return; }
+  const top = scaleMax();
+  ctx.lineWidth = 0.85;
+  ctx.strokeStyle = col('--line-shadow');
+  ctx.beginPath();
+  for (let n = 1; n <= N; n++) tracePath(seqs[n], top);
+  ctx.stroke();
+  drawAxes(top);
+  drawRuler();
+}
+
+function ensureStatic() {
+  const key = staticKey();
+  let oc = staticCache.get(key);
+  if (oc) return oc;
+  const dpr = devicePixelRatio || 1;
+  oc = document.createElement('canvas');
+  oc.width = Math.round(W * dpr); oc.height = Math.round(H * dpr);
+  const g = oc.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const saved = ctx; ctx = g;   // draw helpers use the global ctx
+  renderStaticScene();
+  ctx = saved;
+  staticCache.set(key, oc);
+  return oc;
+}
+
+function draw() {
+  // a backgrounded tab can report a zero-size layout; skip rather than throw,
+  // the resize observer below re-triggers layout()+draw() once a real size lands
+  if (W <= 0 || H <= 0) return;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(ensureStatic(), 0, 0, W, H);
+  if (mode === 'circles') { drawCircles(); return; }
+  if (showAll) {
+    const top = scaleMax();
+    // dashed guides and the hover dot would be unreadable nine times over, so
+    // the overview mode keeps only the leader, trajectory and peak per number,
+    // each tinted with its own earth tone so the nine paths stay distinguishable
+    PICKS.forEach(([n], i) => {
+      const c = ALL_COLORS[i % ALL_COLORS.length];
+      drawSelected(n, top, { guides: false, stepDot: false, lineColor: c, peakColor: c });
+    });
+  } else if (sel) {
+    drawSelected(sel, scaleMax());
+  }
+}
+
+function drawAxes(top) {
+  ctx.strokeStyle = col('--line');
+  ctx.fillStyle = col('--ink-faint');
+  ctx.lineWidth = 1;
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+
+  // axes lines
+  ctx.beginPath();
+  ctx.moveTo(plot.x0, plot.y0); ctx.lineTo(plot.x0, plot.y1);
+  ctx.lineTo(plot.x1, plot.y1);
+  ctx.stroke();
+
+  // y ticks (value): powers of ten on log, quarters on linear
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  const yticks = [];
+  if (logMode) for (let p = 0; Math.pow(10, p) <= top; p++) yticks.push(Math.pow(10, p));
+  else for (let k = 0; k <= 4; k++) yticks.push(Math.round(top * k / 4));
+  for (const v of yticks) {
+    const y = sy(v, top);
+    ctx.beginPath(); ctx.moveTo(plot.x0 - 4, y); ctx.lineTo(plot.x0, y); ctx.stroke();
+    ctx.fillText(fmt(v), plot.x0 - 7, y);
+  }
+  // x ticks (steps)
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let k = 0; k <= 4; k++) {
+    const s = Math.round(maxSteps * k / 4), x = sx(s);
+    ctx.beginPath(); ctx.moveTo(x, plot.y1); ctx.lineTo(x, plot.y1 + 4); ctx.stroke();
+    ctx.fillText(s, x, plot.y1 + 7);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillText('steps →', plot.x1, plot.y1 + 20);
+}
+
+function drawRuler() {
+  const rx = RULER - 14;
+  ctx.strokeStyle = col('--line'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(rx, plot.y0); ctx.lineTo(rx, plot.y1); ctx.stroke();
+
+  ctx.fillStyle = col('--ink-faint');
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (const n of [1, Math.round(N / 4), Math.round(N / 2), Math.round(3 * N / 4), N]) {
+    const y = rulerY(n);
+    ctx.beginPath(); ctx.moveTo(rx - 3, y); ctx.lineTo(rx, y); ctx.stroke();
+    ctx.fillText(n, rx - 6, y);
+  }
+  // vertical caption
+  ctx.save();
+  ctx.translate(11, (plot.y0 + plot.y1) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillStyle = col('--ink-faint');
+  ctx.fillText('start value', 0, 0);
+  ctx.restore();
+}
+
+function drawSelected(n, top, opts = {}) {
+  const { guides = true, stepDot = true, lineColor = col('--accent-line'), peakColor = col('--accent') } = opts;
+  const s = seqs[n];
+  const endX = sx(s.length - 1);
+  const animating = showAll ? true : (animN === n);
+  const prog = (animating && animMs > 0) ? Math.min((performance.now() - animT0) / animMs, 1) : 1;
+  const revealX = plot.x0 + prog * (endX - plot.x0);
+
+  // leader from ruler position to the path start (always visible, not animated)
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(RULER - 14, rulerY(n));
+  ctx.lineTo(plot.x0, sy(s[0], top));
+  ctx.stroke();
+
+  if (guides) {
+    // dotted guides carried along with the drawing front: the vertical follows the
+    // current front x, the horizontal the running maximum reached so far. Both
+    // settle on the end point and the highest value once the draw completes.
+    const frontIdx = Math.round(prog * (s.length - 1));
+    let runMax = 1;
+    for (let i = 0; i <= frontIdx; i++) if (s[i] > runMax) runMax = s[i];
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = lineColor; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(revealX, plot.y0); ctx.lineTo(revealX, plot.y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(plot.x0, sy(runMax, top)); ctx.lineTo(plot.x1, sy(runMax, top)); ctx.stroke();
+    ctx.restore();
+  }
+
+  // trajectory and points revealed left to right during the animation
+  ctx.save();
+  if (prog < 1) {
+    ctx.beginPath();
+    ctx.rect(plot.x0, plot.y0, revealX - plot.x0, plot.y1 - plot.y0);
+    ctx.clip();
+  }
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  tracePath(s, top);
+  ctx.stroke();
+
+  // peak point
+  const pi = s.indexOf(stats[n].max);
+  ctx.fillStyle = peakColor;
+  dot(sx(pi), sy(s[pi], top), 3);
+
+  if (stepDot) {
+    // current-step marker
+    const step = hoverStep != null ? Math.min(hoverStep, s.length - 1) : 0;
+    ctx.fillStyle = lineColor;
+    dot(sx(step), sy(s[step], top), 2.5);
+  }
+
+  ctx.restore();
+}
+
+function dot(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+function fmt(v) { return v.toLocaleString('en-US'); }
+
+// -- arc view -------------------------------------------------------------
+// each jump vi -> vi+1 is a half-circle sitting on the value axis and bulging
+// up; the run reads left to right along the axis, the arcs follow the ball.
+
+// colour of a jump along the sequence, red (first) to blue (last), reusing the
+// red and blue of the "all" overview's categorical set. each filled half-circle
+// takes its own mean colour. a scoped deviation from the brown family, like the
+// "all" overview exception in DESIGN.md
+function arcColor(t) {
+  const r = Math.round(227 + (42 - 227) * t);
+  const g = Math.round(73 + (120 - 73) * t);
+  const b = Math.round(72 + (214 - 72) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// compress the arc height so the widest jump's semicircle just fits the plot;
+// never taller than a true circle, so small runs are not stretched
+function arcK(list) {
+  let maxRx = 0;
+  for (const s of list)
+    for (let i = 0; i < s.length - 1; i++) {
+      const rx = Math.abs(xVal(s[i + 1]) - xVal(s[i])) / 2;
+      if (rx > maxRx) maxRx = rx;
+    }
+  const availH = plot.y1 - plot.y0;
+  return maxRx > 0 ? Math.min(1, availH / maxRx) : 1;
+}
+
+// filled half-circle in the arc's mean colour, painted whole (no reveal)
+function fillArc(xa, xb, k, i, steps, flat) {
+  const cx = (xa + xb) / 2, rx = Math.abs(xb - xa) / 2, ry = rx * k;
+  if (rx < 0.5) return;
+  ctx.fillStyle = flat || arcColor((i + 0.5) / steps);
+  ctx.globalAlpha = 0.05;                             // 5% so overlaps stay legible
+  ctx.beginPath();
+  const SEG = 28;
+  for (let j = 0; j <= SEG; j++) {
+    const th = Math.PI * (j / SEG);                   // full upper half, 0..π
+    const x = cx + rx * Math.cos(th), y = plot.y1 - ry * Math.sin(th);
+    j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// single-colour outline, revealed a fraction f along the hop direction
+function strokeArcFlat(xa, xb, k, f, color) {
+  const cx = (xa + xb) / 2, rx = Math.abs(xb - xa) / 2, ry = rx * k;
+  if (rx < 0.5) return;
+  const goingRight = xb > xa;
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.setLineDash([1, 1]);                            // dotted outline
+  ctx.beginPath();
+  const SEG = 28;
+  for (let j = 0; j <= SEG; j++) {
+    const t = (j / SEG) * f;
+    const th = goingRight ? Math.PI * (1 - t) : Math.PI * t;
+    const x = cx + rx * Math.cos(th), y = plot.y1 - ry * Math.sin(th);
+    j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawArcSeq(n, k, opts = {}) {
+  const { flat = null, guide = true } = opts;
+  const s = seqs[n], steps = s.length - 1, baseY = plot.y1;
+  const lineColor = flat || col('--accent-line');
+
+  // leader across the panel from the ruler to the start value on the axis
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(RULER - 14, rulerY(n));
+  ctx.lineTo(xVal(s[0]), baseY);
+  ctx.stroke();
+
+  const animating = showAll ? true : (animN === n);
+  const prog = (animating && animMs > 0) ? Math.min((performance.now() - animT0) / animMs, 1) : 1;
+  const front = prog * steps;
+
+  // fill layer: whole half-circles in mean colour, revealed one after another
+  for (let i = 0; i < steps; i++) {
+    if (front <= i) break;
+    fillArc(xVal(s[i]), xVal(s[i + 1]), k, i, steps, flat);
+  }
+  // outline layer: always dark brown, drawn on top, progressive along the hops
+  const outlineColor = col('--ink');
+  for (let i = 0; i < steps; i++) {
+    const f = Math.min(1, front - i);
+    if (f <= 0) break;
+    strokeArcFlat(xVal(s[i]), xVal(s[i + 1]), k, f, outlineColor);
+  }
+
+  // peak point on the axis
+  ctx.fillStyle = flat || col('--accent');
+  dot(xVal(stats[n].max), baseY, 3);
+
+  if (guide) {
+    // dotted guide at the drawing front, then at the hovered value once settled
+    const frontIdx = Math.round(prog * steps);
+    const step = (hoverStep != null && prog >= 1) ? Math.min(hoverStep, steps) : frontIdx;
+    const gx = xVal(s[step]);
+    ctx.save();
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = lineColor; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gx, plot.y0); ctx.lineTo(gx, baseY); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = lineColor; dot(gx, baseY, 2.5);
+  }
+}
+
+function drawCircles() {
+  drawArcTicks();
+  if (showAll) {
+    const list = PICKS.map(([n]) => seqs[n]);
+    const k = arcK(list);
+    PICKS.forEach(([n], i) => drawArcSeq(n, k, { flat: ALL_COLORS[i % ALL_COLORS.length], guide: false }));
+  } else if (sel) {
+    drawArcSeq(sel, arcK([seqs[sel]]));
+  }
+}
+
+// static frame: baseline and caption (selection-independent, safe to cache)
+function drawArcAxes() {
+  ctx.strokeStyle = col('--line'); ctx.fillStyle = col('--ink-faint'); ctx.lineWidth = 1;
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.beginPath(); ctx.moveTo(plot.x0, plot.y1); ctx.lineTo(plot.x1, plot.y1); ctx.stroke();
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  ctx.fillText('value →', plot.x1, plot.y1 + 20);
+}
+
+// value ticks; drawn per frame because the linear axis rescales per selection
+function drawArcTicks() {
+  const top = arcMax();
+  ctx.strokeStyle = col('--line'); ctx.fillStyle = col('--ink-faint'); ctx.lineWidth = 1;
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const ticks = [];
+  if (logMode) for (let p = 0; Math.pow(10, p) <= top; p++) ticks.push(Math.pow(10, p));
+  else for (let k = 0; k <= 4; k++) ticks.push(Math.round(top * k / 4));
+  for (const v of ticks) {
+    const x = xVal(v);
+    ctx.beginPath(); ctx.moveTo(x, plot.y1); ctx.lineTo(x, plot.y1 + 4); ctx.stroke();
+    ctx.fillText(fmt(v), x, plot.y1 + 7);
+  }
+}
+
+function showTip(px, py) {
+  if (!sel) { tip.style.display = 'none'; return; }
+  const s = seqs[sel], st = stats[sel];
+  const step = hoverStep != null ? Math.min(hoverStep, s.length - 1) : 0;
+  tip.innerHTML =
+    `<b>start value</b> ${sel}<br>` +
+    `<span>steps</span> ${st.steps}<br>` +
+    `<span>current value</span> ${fmt(s[step])} <span>(step ${step})</span><br>` +
+    `<span>highest value</span> ${fmt(st.max)}<br>` +
+    `<span>end value</span> 1`;
+  tip.style.display = 'block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = px + 14, y = py + 14;
+  if (x + tw > W) x = px - tw - 14;
+  if (y + th > H) y = py - th - 14;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function onMove(e) {
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const inPlotV = my >= plot.y0 && my <= plot.y1;
+  const before = sel;
+
+  if (mx < RULER && inPlotV) {              // over the ruler → pick start value
+    showAll = false;
+    sel = Math.min(N, Math.max(1, yToN(my)));
+    hoverStep = 0;
+  } else if (sel && mx >= plot.x0 && mx <= plot.x1 && inPlotV) {  // over plot → read value/step
+    if (mode === 'circles') {                        // snap to the nearest value on the axis
+      const s = seqs[sel]; let best = 0, bd = Infinity;
+      for (let i = 0; i < s.length; i++) {
+        const d = Math.abs(xVal(s[i]) - mx);
+        if (d < bd) { bd = d; best = i; }
+      }
+      hoverStep = best;
+    } else {
+      hoverStep = Math.max(0, Math.round((mx - plot.x0) / (plot.x1 - plot.x0) * maxSteps));
+    }
+  }
+  if (sel !== before && sel != null) {      // new start value → redraw its line left to right
+    animN = sel; animT0 = performance.now(); startAnim();
+  }
+  updatePicks();
+  draw();
+  showTip(mx, my);
+}
+
+function onLeave() { tip.style.display = 'none'; }
+
+// noteworthy start values for the quick-pick
+const PICKS = [
+  [27, 'iconic'], [31, 'volatile'], [41, 'volatile'], [97, 'long path'],
+  [512, 'power of two'], [639, 'high peak'], [703, 'highest peak'],
+  [871, 'most steps'], [937, 'highest peak'],
+];
+
+// one categorical hue per PICKS entry for the "all" overview; a documented
+// exception to the single brown family in DESIGN.md, see its "Farbe" section
+const ALL_COLORS = [
+  '#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7',
+  '#e34948', '#e87ba4', '#eb6834', '#8b2252',
+];
+
+function select(n) {
+  showAll = false;
+  sel = n; hoverStep = 0;
+  animN = n; animT0 = performance.now();
+  startAnim();
+  updatePicks();
+  showTip(plot.x1, plot.y0 + 20);   // park the tooltip top-right, away from the line start
+}
+
+function selectAll() {
+  showAll = true;
+  sel = null; hoverStep = null;
+  animT0 = performance.now();
+  startAnim();
+  updatePicks();
+  tip.style.display = 'none';
+}
+
+// highlight the pick button matching the current selection (if any)
+function updatePicks() {
+  document.querySelectorAll('.pick[data-n]').forEach(b => {
+    b.classList.toggle('on', +b.dataset.n === sel);
+    // in the "all" overview, frame each button in its line's colour instead
+    b.style.borderColor = showAll ? ALL_COLORS[+b.dataset.i] : '';
+  });
+  document.getElementById('allBtn').classList.toggle('on', showAll);
+}
+
+function buildPicks() {
+  const box = document.getElementById('picks');
+  PICKS.forEach(([n, label], i) => {
+    const b = document.createElement('button');
+    b.className = 'pick';
+    b.dataset.n = n;
+    b.dataset.i = i;
+    b.innerHTML = `<b>${n}</b><span>${label}</span>`;
+    b.addEventListener('click', () => select(n));
+    box.appendChild(b);
+  });
+  const allBtn = document.createElement('button');
+  allBtn.id = 'allBtn';
+  allBtn.className = 'pick';
+  allBtn.innerHTML = `<b>all</b>`;
+  allBtn.addEventListener('click', selectAll);
+  box.appendChild(allBtn);
+}
+
+async function main() {
+  const txt = (await (await fetch('data/collatz.csv')).text()).trim();
+  const rows = txt.trim().split('\n').slice(1);
+  seqs = []; stats = []; N = 1;
+  for (const row of rows) {
+    // n,steps,max,"v,v,v..."  — split off the first three fields, rest is the sequence
+    const q = row.indexOf('"');
+    const head = row.slice(0, q).split(',');
+    const n = +head[0];
+    const seq = row.slice(q + 1, row.lastIndexOf('"')).split(',').map(Number);
+    seqs[n] = seq;
+    stats[n] = { steps: +head[1], max: +head[2] };
+    if (n > N) N = n;
+    if (stats[n].max > globalMax) globalMax = stats[n].max;
+    if (stats[n].steps > maxSteps) maxSteps = stats[n].steps;
+  }
+  sub.textContent = `${seqs.filter(Boolean).length} start values · up to ${maxSteps} steps · highest value ${fmt(globalMax)} · hover the number line`;
+  layout();
+  await prewarm();   // render all four views into the cache, one per frame, spinner visible
+  document.getElementById('spinner').classList.add('hidden');
+  document.getElementById('logBtn').classList.toggle('on', logMode);
+  draw();
+  buildPicks();
+  document.getElementById('allBtn').style.display = mode === 'circles' ? 'none' : '';
+  cv.addEventListener('mousemove', onMove);
+  cv.addEventListener('mouseleave', onLeave);
+  document.getElementById('logBtn').addEventListener('click', e => {
+    logMode = !logMode;
+    e.target.classList.toggle('on', logMode);
+    if (showAll || sel != null) { animN = sel; animT0 = performance.now(); startAnim(); }
+    else draw();
+  });
+  document.getElementById('modeBtn').addEventListener('click', e => {
+    mode = mode === 'circles' ? 'steps' : 'circles';
+    e.target.textContent = mode === 'circles' ? 'Steps' : 'Circles';
+    document.getElementById('allBtn').style.display = mode === 'circles' ? 'none' : '';
+    if (mode === 'circles' && showAll) { showAll = false; updatePicks(); }
+    if (showAll || sel != null) { animN = sel; animT0 = performance.now(); startAnim(); }
+    else draw();
+  });
+  const speed = document.getElementById('speed');
+  speed.addEventListener('input', () => {
+    animMs = +speed.value;
+    // replay the reveal animation at the new speed for whatever is selected
+    if (showAll || sel != null) { animN = sel; animT0 = performance.now(); startAnim(); }
+  });
+  // covers window resizes and, unlike a 'resize' listener, also catches the
+  // moment a backgrounded tab regains a real layout size after the initial draw() no-op
+  new ResizeObserver(() => {
+    staticCache.clear(); layout(); draw();
+    if (sel) showTip(W / 2, H / 2);
+  }).observe(document.getElementById('stage'));
+}
+
+// warm both linear and log views one per frame, so the log-scale toggle and
+// the reveal animation never pay a render cost mid-interaction
+function prewarm() {
+  const combos = [false, true];
+  return new Promise(resolve => {
+    let i = 0;
+    const step = () => {
+      if (i >= combos.length) { logMode = false; resolve(); return; }
+      logMode = combos[i++];
+      ensureStatic();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+main();
+</script>

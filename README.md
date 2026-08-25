@@ -91,6 +91,21 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 </tr>
 <tr>
 <td colspan="2" valign="top">
+  <a href="planetWebGL/">
+    <img src="planetWebGL/preview.webp" alt="WFC Planet">
+  </a>
+  <h3><a href="planetWebGL/">WFC Planet</a></h3>
+  <p>
+    A planet grown from a wave function collapse, rendered in raw WebGL: the
+    pipe network becomes mountain ranges, the empty cells around it the sea,
+    and the land rises out of the ocean click by click.<br>
+    readme: <a href="planetWebGL/README.md">/planetWebGL/README.md</a><br>
+    live: <a href="https://tlausz.github.io/Playground/planetWebGL/">/planetWebGL/</a>
+  </p>
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
   <a href="block-cloud/">
     <img src="block-cloud/preview.webp" alt="Block-Cloud">
   </a>

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#04060b">
+<title>WFC Planet</title>
+<style>
+  :root {
+    --ui-bg: rgba(10, 14, 22, 0.78);
+    --ui-border: rgba(159, 216, 255, 0.22);
+    --ui-text: rgba(226, 234, 244, 0.94);
+    --ui-accent: #9fd8ff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: #04060b; overflow: hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas#gl { position: fixed; inset: 0; display: block; width: 100%; height: 100%;
+    touch-action: none; user-select: none; -webkit-user-select: none; }
+  #panel {
+    position: fixed; z-index: 10; top: 16px; left: 16px; width: 250px;
+    padding: 14px 16px; border-radius: 14px;
+    background: var(--ui-bg); border: 1px solid var(--ui-border);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    color: var(--ui-text); font-size: 13px; line-height: 1.45;
+  }
+  #panel h1 { margin: 0 0 4px; font-size: 13px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ui-accent); }
+  #panel p { margin: 0 0 10px; color: rgba(226,234,244,0.62); font-size: 12px; }
+  .buttons { display: flex; gap: 6px; margin-bottom: 10px; }
+  .buttons button {
+    flex: 1 1 0; padding: 7px 0; border-radius: 9px; cursor: pointer;
+    background: rgba(159,216,255,0.08); color: var(--ui-text);
+    border: 1px solid var(--ui-border); font-size: 12.5px;
+  }
+  .buttons button:hover { background: rgba(159,216,255,0.16); }
+  .buttons button.on { background: rgba(159,216,255,0.24); border-color: var(--ui-accent); }
+  #status { color: rgba(226,234,244,0.6); font-size: 12px; font-variant-numeric: tabular-nums; }
+  #hint { margin-top: 6px; color: rgba(226,234,244,0.38); font-size: 11px; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="panel">
+  <h1>WFC Planet</h1>
+  <p>A world grown from a wave function collapse: the pipes become mountain
+  ranges and the empty cells around them the sea.</p>
+  <div class="buttons">
+    <button id="bGrow">Grow</button>
+    <button id="bAuto">Auto</button>
+    <button id="bFinish">Finish</button>
+    <button id="bNew">New</button>
+  </div>
+  <div id="status"></div>
+  <div id="hint">drag to turn &middot; wheel to zoom</div>
+</div>
+<script>
+'use strict';
+
+/* ==================================================================
+ * WFC Planet
+ *
+ * A wave function collapse runs on a coarse icosphere lattice, the same
+ * pipe tiles as the Wave Function Collapse sketch next door. Its output
+ * becomes terrain: distance to the nearest pipe is height, so the pipe
+ * network turns into mountain ranges, junctions into peaks, and the empty
+ * cells far from any pipe into the sea. A much finer icosphere mesh
+ * samples that height field, adds seeded noise for coastlines and
+ * roughness, and WebGL shades it as a planet.
+ * ================================================================== */
+
+/* ------------------------------------------------------------------
+ * Seeded randomness. mulberry32 drives the solver, the integer hash
+ * drives the value noise, both from the same planet seed so one seed
+ * always grows the same world.
+ * ------------------------------------------------------------------ */
+const mulberry32 = (a) => () => {
+  a = (a + 0x6d2b79f5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+let noiseSeed = 1;
+function hash3(x, y, z) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263)
+        + Math.imul(z, 1440662683) + Math.imul(noiseSeed, 974711);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+const smooth = (t) => t * t * (3 - 2 * t);
+function vnoise(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = smooth(x - xi), yf = smooth(y - yi), zf = smooth(z - zi);
+  let v = 0;
+  for (let c = 0; c < 8; c++) {
+    const dx = c & 1, dy = (c >> 1) & 1, dz = (c >> 2) & 1;
+    v += hash3(xi + dx, yi + dy, zi + dz)
+       * (dx ? xf : 1 - xf) * (dy ? yf : 1 - yf) * (dz ? zf : 1 - zf);
+  }
+  return v * 2 - 1;
+}
+function fbm(x, y, z, oct) {
+  let v = 0, amp = 0.5, f = 1;
+  for (let o = 0; o < oct; o++) {
+    v += amp * vnoise(x * f + o * 17.17, y * f, z * f);
+    amp *= 0.5; f *= 2.1;
+  }
+  return v;
+}
+
+/* ------------------------------------------------------------------
+ * Icosphere builders. Both lattices subdivide the same icosahedron;
+ * shared points are matched by integer barycentric coordinates so
+ * neighbouring faces agree on a vertex instead of leaving a seam.
+ *
+ * buildLattice returns the coarse solver graph: cyclically ordered
+ * neighbours and, per edge, the slot it occupies on the far side.
+ * buildMesh returns the fine render mesh: unit directions plus
+ * triangles for the index buffer.
+ * ------------------------------------------------------------------ */
+const ICO = (() => {
+  const t = (1 + Math.sqrt(5)) / 2;
+  const corner = [
+    [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
+    [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t],
+    [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1],
+  ];
+  const faces = [
+    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+  ];
+  return { corner, faces };
+})();
+
+function subdivide(freq) {
+  const { corner, faces } = ICO;
+  const coords = [];
+  const byKey = new Map();
+  const tris = [];
+  const edgeKey = (u, v, s) => (u < v ? 'e' + u + '_' + v + '_' + s : 'e' + v + '_' + u + '_' + (freq - s));
+  const keyFor = (face, fi, i, j) => {
+    const [a, b, c] = face;
+    const k = freq - i - j;
+    if (i === 0 && j === 0) return 'v' + a;
+    if (k === 0 && j === 0) return 'v' + b;
+    if (k === 0 && i === 0) return 'v' + c;
+    if (j === 0) return edgeKey(a, b, i);
+    if (i === 0) return edgeKey(a, c, j);
+    if (k === 0) return edgeKey(b, c, j);
+    return 'f' + fi + '_' + i + '_' + j;
+  };
+  const vertexAt = (face, fi, i, j) => {
+    const key = keyFor(face, fi, i, j);
+    let idx = byKey.get(key);
+    if (idx !== undefined) return idx;
+    const [a, b, c] = face;
+    const k = freq - i - j;
+    let x = (corner[a][0] * k + corner[b][0] * i + corner[c][0] * j) / freq;
+    let y = (corner[a][1] * k + corner[b][1] * i + corner[c][1] * j) / freq;
+    let z = (corner[a][2] * k + corner[b][2] * i + corner[c][2] * j) / freq;
+    const l = Math.hypot(x, y, z);
+    idx = coords.length / 3;
+    coords.push(x / l, y / l, z / l);
+    byKey.set(key, idx);
+    return idx;
+  };
+  faces.forEach((face, fi) => {
+    const grid = [];
+    for (let i = 0; i <= freq; i++) {
+      grid.push([]);
+      for (let j = 0; j <= freq - i; j++) grid[i].push(vertexAt(face, fi, i, j));
+    }
+    for (let i = 0; i < freq; i++) {
+      for (let j = 0; j < freq - i; j++) {
+        tris.push(grid[i][j], grid[i + 1][j], grid[i][j + 1]);
+        if (j < freq - i - 1) tris.push(grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]);
+      }
+    }
+  });
+  return { pos: Float64Array.from(coords), tris: Uint16Array.from(tris), n: coords.length / 3 };
+}
+
+function buildLattice(freq) {
+  const { pos, tris, n } = subdivide(freq);
+  const around = [];
+  for (let c = 0; c < n; c++) around.push(new Set());
+  for (let i = 0; i < tris.length; i += 3) {
+    const a = tris[i], b = tris[i + 1], c = tris[i + 2];
+    around[a].add(b); around[b].add(a);
+    around[b].add(c); around[c].add(b);
+    around[c].add(a); around[a].add(c);
+  }
+  const deg = new Int8Array(n);
+  const nbrOff = new Int32Array(n + 1);
+  for (let c = 0; c < n; c++) { deg[c] = around[c].size; nbrOff[c + 1] = nbrOff[c] + deg[c]; }
+  const nbr = new Int32Array(nbrOff[n]);
+  const slot = new Int8Array(nbrOff[n]).fill(-1);
+  // Order each cell's neighbours cyclically, seen from outside, so a tile's
+  // edge ring is consistent and the slot pairing below means something.
+  for (let c = 0; c < n; c++) {
+    const nx = pos[c * 3], ny = pos[c * 3 + 1], nz = pos[c * 3 + 2];
+    const list = Array.from(around[c]);
+    const first = list[0];
+    let ux = pos[first * 3] - nx, uy = pos[first * 3 + 1] - ny, uz = pos[first * 3 + 2] - nz;
+    const dn = ux * nx + uy * ny + uz * nz;
+    ux -= dn * nx; uy -= dn * ny; uz -= dn * nz;
+    const ul = Math.hypot(ux, uy, uz);
+    ux /= ul; uy /= ul; uz /= ul;
+    const wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;
+    const angleOf = (m) => {
+      const dx = pos[m * 3] - nx, dy = pos[m * 3 + 1] - ny, dz = pos[m * 3 + 2] - nz;
+      return Math.atan2(dx * wx + dy * wy + dz * wz, dx * ux + dy * uy + dz * uz);
+    };
+    list.sort((p, q) => angleOf(p) - angleOf(q));
+    for (let d = 0; d < list.length; d++) nbr[nbrOff[c] + d] = list[d];
+  }
+  for (let c = 0; c < n; c++) {
+    for (let k = nbrOff[c]; k < nbrOff[c + 1]; k++) {
+      const m = nbr[k];
+      for (let j = nbrOff[m]; j < nbrOff[m + 1]; j++) {
+        if (nbr[j] === c) { slot[k] = j - nbrOff[m]; break; }
+      }
+    }
+  }
+  return { n, pos, deg, nbrOff, nbr, slot };
+}
+
+/* ------------------------------------------------------------------
+ * Tiles and solver, ported from the Wave Function Collapse sketch and
+ * trimmed to what a planet needs: a tile is a pattern of pipes leaving
+ * through the cell's edges, minus the single-pipe dead ends. Blanks are
+ * favoured so the map has open sea, junctions are rare so ridges stay
+ * ridge-like. On a contradiction the planet simply reseeds; at these
+ * sizes the solver almost never needs to.
+ * ------------------------------------------------------------------ */
+const TILE_CACHE = new Map();
+function tilesFor(D) {
+  let list = TILE_CACHE.get(D);
+  if (list) return list;
+  list = [];
+  for (let bits = 0; bits < 1 << D; bits++) {
+    const edges = [];
+    let degree = 0;
+    for (let d = 0; d < D; d++) { const on = (bits >> d) & 1; edges.push(on); degree += on; }
+    if (degree === 1) continue;
+    // The blank competes against the whole pipe family at once, several dozen
+    // tiles to its one, so its weight has to be of that order or the map
+    // fills wall to wall and the planet has no sea.
+    const weight = degree === 0 ? 48 : degree >= 3 ? 0.5 : 1;
+    list.push({ edges, degree, weight });
+  }
+  TILE_CACHE.set(D, list);
+  return list;
+}
+
+const FREQ = 7;          // solver lattice, 10*FREQ^2+2 cells
+const MESH_FREQ = 48;    // render mesh, fits in a Uint16 index buffer
+
+const lattice = buildLattice(FREQ);
+const nCells = lattice.n;
+
+let seed = 0;
+let rng = Math.random;
+const settledFlag = new Uint8Array(nCells);
+let allow, count;        // per cell: which tiles are still possible, how many
+let settled = 0;
+let restarts = 0;
+const base = new Int32Array(nCells);
+const size = new Int32Array(nCells);
+{
+  let total = 0;
+  for (let c = 0; c < nCells; c++) {
+    base[c] = total;
+    size[c] = tilesFor(lattice.deg[c]).length;
+    total += size[c];
+  }
+  allow = new Uint8Array(total);
+}
+
+function resetSolver(newSeed) {
+  seed = newSeed >>> 0;
+  rng = mulberry32(seed);
+  noiseSeed = (seed ^ 0x9e3779b9) | 1;
+  allow.fill(1);
+  count = Int32Array.from(size);
+  settledFlag.fill(0);
+  settled = 0;
+}
+
+const soleTile = (c) => {
+  for (let t = 0; t < size[c]; t++) if (allow[base[c] + t]) return t;
+  return -1;
+};
+
+function propagate(start) {
+  const stack = [start];
+  while (stack.length) {
+    const c = stack.pop();
+    const tiles = tilesFor(lattice.deg[c]);
+    for (let d = 0; d < lattice.deg[c]; d++) {
+      let p0 = false, p1 = false;
+      for (let t = 0; t < size[c]; t++) {
+        if (!allow[base[c] + t]) continue;
+        if (tiles[t].edges[d]) p1 = true; else p0 = true;
+        if (p0 && p1) break;
+      }
+      if (p0 && p1) continue;         // nothing constrained on this edge
+      if (!p0 && !p1) return false;   // no tile left at all
+      const forced = p1 ? 1 : 0;
+      const k = lattice.nbrOff[c] + d;
+      const m = lattice.nbr[k];
+      const s = lattice.slot[k];
+      const mt = tilesFor(lattice.deg[m]);
+      let dropped = false;
+      for (let t = 0; t < size[m]; t++) {
+        if (!allow[base[m] + t]) continue;
+        if (mt[t].edges[s] !== forced) {
+          allow[base[m] + t] = 0;
+          count[m]--;
+          dropped = true;
+        }
+      }
+      if (count[m] === 0) return false;
+      if (dropped) {
+        if (count[m] === 1) settledCheck(m);
+        stack.push(m);
+      }
+    }
+  }
+  return true;
+}
+
+function settledCheck(c) {
+  if (!settledFlag[c] && count[c] === 1) { settledFlag[c] = 1; settled++; }
+}
+
+function collapseOne() {
+  // Observe: the cell with the fewest options, ties broken at random so the
+  // front stays organic.
+  let best = -1, bestCount = Infinity, ties = 0;
+  for (let c = 0; c < nCells; c++) {
+    if (count[c] === 1) continue;
+    if (count[c] < bestCount) { bestCount = count[c]; best = c; ties = 1; }
+    else if (count[c] === bestCount && rng() * ++ties < 1) best = c;
+  }
+  if (best < 0) return 'done';
+  const tiles = tilesFor(lattice.deg[best]);
+  let total = 0;
+  for (let t = 0; t < size[best]; t++) if (allow[base[best] + t]) total += tiles[t].weight;
+  let pick = rng() * total;
+  let chosen = -1;
+  for (let t = 0; t < size[best]; t++) {
+    if (!allow[base[best] + t]) continue;
+    pick -= tiles[t].weight;
+    if (pick <= 0) { chosen = t; break; }
+    chosen = t;
+  }
+  for (let t = 0; t < size[best]; t++) {
+    if (t !== chosen) allow[base[best] + t] = 0;
+  }
+  count[best] = 1;
+  settledCheck(best);
+  return propagate(best) ? 'ok' : 'contradiction';
+}
+
+/* ------------------------------------------------------------------
+ * Heights. Distance to the nearest pipe is the whole terrain rule:
+ * pipe cells are the ridge line, junctions the peaks, one hop away is
+ * lowland, two hops the shallows, further out the deep sea. Cells the
+ * solver has not decided yet count as open water, which is why the
+ * planet starts as an ocean and the land rises as the map settles.
+ * A large-scale noise sways the whole field so no two ridges sit at
+ * exactly the same height.
+ * ------------------------------------------------------------------ */
+const cellH = new Float32Array(nCells);
+function computeCellHeights() {
+  const dist = new Int16Array(nCells).fill(-1);
+  const queue = [];
+  for (let c = 0; c < nCells; c++) {
+    if (count[c] !== 1) continue;
+    const tile = tilesFor(lattice.deg[c])[soleTile(c)];
+    if (tile.degree > 0) { dist[c] = 0; queue.push(c); }
+  }
+  for (let q = 0; q < queue.length; q++) {
+    const c = queue[q];
+    for (let k = lattice.nbrOff[c]; k < lattice.nbrOff[c + 1]; k++) {
+      const m = lattice.nbr[k];
+      if (dist[m] >= 0 || count[m] !== 1) continue;
+      dist[m] = dist[c] + 1;
+      queue.push(m);
+    }
+  }
+  const settledH = [];
+  for (let c = 0; c < nCells; c++) {
+    const px = lattice.pos[c * 3], py = lattice.pos[c * 3 + 1], pz = lattice.pos[c * 3 + 2];
+    const sway = fbm(px * 1.6, py * 1.6, pz * 1.6, 2) * 0.34;
+    let h;
+    if (dist[c] < 0) h = NaN;                                  // undecided: open water
+    else if (dist[c] === 0) {
+      const tile = tilesFor(lattice.deg[c])[soleTile(c)];
+      h = 0.55 + (tile.degree >= 3 ? 0.35 : 0);                // ridge, junction = peak
+    } else if (dist[c] === 1) h = 0.16;                        // lowland
+    else h = Math.max(-0.9, 0.16 - 0.44 * (dist[c] - 1));      // shelf into deep sea
+    cellH[c] = Number.isNaN(h) ? h : h + sway;
+    if (!Number.isNaN(h)) settledH.push(cellH[c]);
+  }
+  // The sea level is not a constant but a percentile: the pipes always win
+  // the collapse, so absolute heights alone would drown almost nothing.
+  // Pinning the level so that a fixed share of settled cells lies below it
+  // keeps the land fraction earth-like whatever the tile weights do, and
+  // leaves the pattern to decide where the land sits, not how much of it
+  // there is.
+  settledH.sort((a, b) => a - b);
+  const level = settledH.length ? settledH[Math.floor(settledH.length * 0.58)] : 0;
+  for (let c = 0; c < nCells; c++) {
+    cellH[c] = Number.isNaN(cellH[c]) ? -0.75 : cellH[c] - level;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * The render mesh samples the cell heights: each vertex takes an
+ * inverse-distance blend of its three nearest cells, precomputed once
+ * because the lattice never moves. Seeded noise on top does what the
+ * coarse field cannot: coastline wiggle at kilometre scale and rock
+ * roughness that only shows on high ground.
+ * ------------------------------------------------------------------ */
+const mesh = subdivide(MESH_FREQ);
+const nVerts = mesh.n;
+const nearCell = new Int32Array(nVerts * 3);
+const nearW = new Float32Array(nVerts * 3);
+{
+  for (let v = 0; v < nVerts; v++) {
+    const vx = mesh.pos[v * 3], vy = mesh.pos[v * 3 + 1], vz = mesh.pos[v * 3 + 2];
+    let i0 = -1, i1 = -1, i2 = -1, d0 = -2, d1 = -2, d2 = -2;
+    for (let c = 0; c < nCells; c++) {
+      const dot = vx * lattice.pos[c * 3] + vy * lattice.pos[c * 3 + 1] + vz * lattice.pos[c * 3 + 2];
+      if (dot > d0) { d2 = d1; i2 = i1; d1 = d0; i1 = i0; d0 = dot; i0 = c; }
+      else if (dot > d1) { d2 = d1; i2 = i1; d1 = dot; i1 = c; }
+      else if (dot > d2) { d2 = dot; i2 = c; }
+    }
+    const w = (dot) => 1 / (Math.acos(Math.min(1, dot)) + 0.02);
+    const w0 = w(d0), w1 = w(d1), w2 = w(d2);
+    const sum = w0 + w1 + w2;
+    nearCell[v * 3] = i0; nearCell[v * 3 + 1] = i1; nearCell[v * 3 + 2] = i2;
+    nearW[v * 3] = w0 / sum; nearW[v * 3 + 1] = w1 / sum; nearW[v * 3 + 2] = w2 / sum;
+  }
+}
+
+const coastNoise = new Float32Array(nVerts);
+const roughNoise = new Float32Array(nVerts);
+function bakeNoise() {
+  for (let v = 0; v < nVerts; v++) {
+    const x = mesh.pos[v * 3], y = mesh.pos[v * 3 + 1], z = mesh.pos[v * 3 + 2];
+    coastNoise[v] = fbm(x * 3.4, y * 3.4, z * 3.4, 4);
+    roughNoise[v] = fbm(x * 9.0 + 31.7, y * 9.0, z * 9.0, 3);
+  }
+}
+
+const targetH = new Float32Array(nVerts);
+const shownH = new Float32Array(nVerts);
+function computeTargets() {
+  computeCellHeights();
+  for (let v = 0; v < nVerts; v++) {
+    const macro = cellH[nearCell[v * 3]] * nearW[v * 3]
+                + cellH[nearCell[v * 3 + 1]] * nearW[v * 3 + 1]
+                + cellH[nearCell[v * 3 + 2]] * nearW[v * 3 + 2];
+    let h = macro + coastNoise[v] * 0.17;
+    // Stretch the land so the ridge tops reach rock and snow; the sea level
+    // percentile keeps the coastline where it is.
+    if (h > 0) {
+      h *= 1.6;
+      h += roughNoise[v] * 0.14 * Math.min(1, h * 2.2);
+    }
+    targetH[v] = h;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * WebGL. One program for the planet, one for the star field, one for
+ * the atmosphere halo. The planet's positions, normals and heights are
+ * CPU-side arrays re-uploaded while the terrain is still morphing;
+ * once the morph settles the buffers stop changing and a frame is one
+ * draw call per program.
+ * ------------------------------------------------------------------ */
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true });
+
+function compile(vsSrc, fsSrc) {
+  const mk = (type, src) => {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  };
+  const p = gl.createProgram();
+  gl.attachShader(p, mk(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const planetProg = compile(`
+  attribute vec3 aPos;      // displaced position, model space
+  attribute vec3 aNrm;
+  attribute vec3 aDir;      // unit direction, for radial slope and water texture
+  attribute float aH;
+  uniform mat3 uRot;
+  uniform mat4 uProj;
+  uniform float uDist;
+  varying vec3 vN; varying vec3 vUp; varying vec3 vDirM; varying float vH;
+  void main() {
+    vec3 p = uRot * aPos;
+    vN = uRot * aNrm;
+    vUp = uRot * aDir;
+    vDirM = aDir;
+    vH = aH;
+    gl_Position = uProj * vec4(p.xy, p.z - uDist, 1.0);
+  }
+`, `
+  precision mediump float;
+  varying vec3 vN; varying vec3 vUp; varying vec3 vDirM; varying float vH;
+  uniform float uT;
+  // Daylight is two tinted sources: a faintly blue sky fill that is all a
+  // shadowed slope gets, and a warm white key. Together they sum to just
+  // about neutral.
+  const vec3 LIGHT = vec3(-0.42, 0.55, 0.72);
+  const vec3 AMB = vec3(0.30, 0.36, 0.47);
+  const vec3 KEY = vec3(0.98, 0.92, 0.80);
+  void main() {
+    vec3 N = normalize(vN);
+    vec3 L = normalize(LIGHT);
+    float lam = max(0.0, dot(N, L));
+    vec3 col;
+    if (vH < 0.0) {
+      float depth = clamp(-vH * 1.6, 0.0, 1.0);
+      // Slow swirls, drawn in model space so the currents turn with the
+      // planet instead of sliding across it.
+      float swirl = sin(vDirM.x * 9.0 + vDirM.y * 7.0 + uT * 0.12)
+                  * sin(vDirM.z * 8.0 - vDirM.x * 6.0 + uT * 0.09);
+      vec3 shallow = vec3(0.12, 0.45, 0.50);
+      vec3 deep = vec3(0.03, 0.14, 0.24);
+      col = mix(shallow, deep, depth) * (1.0 + swirl * 0.06);
+      float spec = pow(max(0.0, dot(reflect(-L, N), vec3(0.0, 0.0, 1.0))), 60.0);
+      col += KEY * spec * 0.25;
+    } else {
+      vec3 sand = vec3(0.66, 0.60, 0.44);
+      vec3 grass = vec3(0.22, 0.40, 0.20);
+      vec3 forest = vec3(0.12, 0.28, 0.15);
+      vec3 rock = vec3(0.42, 0.39, 0.34);
+      vec3 snow = vec3(0.93, 0.95, 0.97);
+      col = mix(sand, grass, smoothstep(0.02, 0.10, vH));
+      col = mix(col, forest, smoothstep(0.12, 0.34, vH));
+      col = mix(col, rock, smoothstep(0.38, 0.62, vH));
+      col = mix(col, snow, smoothstep(0.68, 0.82, vH));
+      // Steep ground breaks to rock whatever its height.
+      float slope = 1.0 - clamp(dot(N, normalize(vUp)), 0.0, 1.0);
+      col = mix(col, rock, clamp(slope * 2.4 - 0.12, 0.0, 0.75));
+    }
+    col = col * (AMB + KEY * lam);
+    // A whisper of atmosphere on the limb.
+    float rim = pow(1.0 - abs(N.z), 3.0);
+    col += vec3(0.25, 0.45, 0.75) * rim * 0.22;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`);
+
+const starProg = compile(`
+  attribute vec3 aStar;    // xy clip position, z brightness
+  varying float vB;
+  void main() {
+    vB = aStar.z;
+    gl_PointSize = 1.0 + aStar.z * 1.6;
+    gl_Position = vec4(aStar.xy, 0.999, 1.0);
+  }
+`, `
+  precision mediump float;
+  varying float vB;
+  void main() {
+    vec2 d = gl_PointCoord - 0.5;
+    float a = smoothstep(0.5, 0.1, length(d)) * (0.35 + vB * 0.5);
+    gl_FragColor = vec4(vec3(0.85, 0.89, 1.0) * a, a);
+  }
+`);
+
+const haloProg = compile(`
+  attribute vec2 aQuad;
+  varying vec2 vQ;
+  uniform vec2 uScale;     // planet radius in clip units, per axis
+  void main() {
+    vQ = aQuad * 1.35;
+    gl_Position = vec4(aQuad * uScale * 1.35, 0.998, 1.0);
+  }
+`, `
+  precision mediump float;
+  varying vec2 vQ;
+  void main() {
+    float r = length(vQ);
+    // A soft blue band just outside the limb, gone by 1.3 radii.
+    float a = smoothstep(1.22, 1.0, r) * smoothstep(0.94, 1.03, r) * 0.42;
+    gl_FragColor = vec4(vec3(0.30, 0.52, 0.85) * a, a);
+  }
+`);
+
+// Planet buffers.
+const posArr = new Float32Array(nVerts * 3);
+const nrmArr = new Float32Array(nVerts * 3);
+const dirArr = Float32Array.from(mesh.pos);
+const bufPos = gl.createBuffer();
+const bufNrm = gl.createBuffer();
+const bufDir = gl.createBuffer();
+const bufH = gl.createBuffer();
+const bufIdx = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufIdx);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.tris, gl.STATIC_DRAW);
+gl.bindBuffer(gl.ARRAY_BUFFER, bufDir);
+gl.bufferData(gl.ARRAY_BUFFER, dirArr, gl.STATIC_DRAW);
+
+// Stars, fixed to the sky rather than the planet.
+const N_STARS = 420;
+const starArr = new Float32Array(N_STARS * 3);
+{
+  const srng = mulberry32(1234567);
+  for (let i = 0; i < N_STARS; i++) {
+    starArr[i * 3] = srng() * 2 - 1;
+    starArr[i * 3 + 1] = srng() * 2 - 1;
+    starArr[i * 3 + 2] = srng();
+  }
+}
+const bufStar = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, bufStar);
+gl.bufferData(gl.ARRAY_BUFFER, starArr, gl.STATIC_DRAW);
+
+const bufQuad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+/* ------------------------------------------------------------------
+ * Geometry update: displace along the direction, ocean stays a smooth
+ * sphere so the water reads as a surface rather than a seabed, land
+ * rises up to about seven percent of the radius. Normals come from the
+ * actual triangles, which is what lets slopes shade as slopes.
+ * ------------------------------------------------------------------ */
+const LAND_SCALE = 0.07;
+function rebuildGeometry() {
+  for (let v = 0; v < nVerts; v++) {
+    const r = 1 + Math.max(0, shownH[v]) * LAND_SCALE;
+    posArr[v * 3] = dirArr[v * 3] * r;
+    posArr[v * 3 + 1] = dirArr[v * 3 + 1] * r;
+    posArr[v * 3 + 2] = dirArr[v * 3 + 2] * r;
+  }
+  nrmArr.fill(0);
+  const t = mesh.tris;
+  for (let i = 0; i < t.length; i += 3) {
+    const a = t[i] * 3, b = t[i + 1] * 3, c = t[i + 2] * 3;
+    const abx = posArr[b] - posArr[a], aby = posArr[b + 1] - posArr[a + 1], abz = posArr[b + 2] - posArr[a + 2];
+    const acx = posArr[c] - posArr[a], acy = posArr[c + 1] - posArr[a + 1], acz = posArr[c + 2] - posArr[a + 2];
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+    nrmArr[a] += nx; nrmArr[a + 1] += ny; nrmArr[a + 2] += nz;
+    nrmArr[b] += nx; nrmArr[b + 1] += ny; nrmArr[b + 2] += nz;
+    nrmArr[c] += nx; nrmArr[c + 1] += ny; nrmArr[c + 2] += nz;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufPos);
+  gl.bufferData(gl.ARRAY_BUFFER, posArr, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufNrm);
+  gl.bufferData(gl.ARRAY_BUFFER, nrmArr, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufH);
+  gl.bufferData(gl.ARRAY_BUFFER, shownH, gl.DYNAMIC_DRAW);
+}
+
+/* ------------------------------------------------------------------
+ * Camera and matrices, hand-rolled because a planet needs exactly one
+ * rotation, one distance and one perspective.
+ * ------------------------------------------------------------------ */
+let yaw = 0.6, pitch = -0.25, dist = 4.2, spin = 0.0016;
+let W = 0, H = 0, dpr = 1;
+const proj = new Float32Array(16);
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  const f = 1 / Math.tan(0.30);           // ~34 degree fov
+  const aspect = W / H;
+  const near = 0.1, far = 10;
+  proj.set([
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (far + near) / (near - far), -1,
+    0, 0, (2 * far * near) / (near - far), 0,
+  ]);
+}
+window.addEventListener('resize', resize);
+
+const rot = new Float32Array(9);
+function updateRot() {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // Yaw about the poles, then pitch toward the camera; column-major mat3.
+  rot.set([
+    cy, sy * sp, -sy * cp,
+    0, cp, sp,
+    sy, -cy * sp, cy * cp,
+  ]);
+}
+
+/* ------------------------------------------------------------------
+ * Growth control. Grow advances the collapse one chunk, Auto keeps
+ * doing that, Finish runs it to the end, New starts an empty ocean
+ * with a fresh seed. A contradiction quietly reseeds.
+ * ------------------------------------------------------------------ */
+const CHUNK = Math.max(6, Math.round(nCells / 30));
+let auto = false;
+let lastAuto = 0;
+
+function growChunk() {
+  for (let i = 0; i < CHUNK; i++) {
+    const r = collapseOne();
+    if (r === 'done') { auto = false; break; }
+    if (r === 'contradiction') { restarts++; newPlanet((seed + 1) >>> 0); return; }
+  }
+  computeTargets();
+  status();
+}
+
+function finishAll() {
+  for (let guard = 0; guard < nCells * 4; guard++) {
+    const r = collapseOne();
+    if (r === 'done') break;
+    if (r === 'contradiction') { restarts++; resetSolver((seed + 1) >>> 0); bakeNoise(); guard = 0; }
+  }
+  auto = false;
+  computeTargets();
+  status();
+}
+
+function newPlanet(newSeed) {
+  resetSolver(newSeed);
+  bakeNoise();
+  computeTargets();
+  auto = false;
+  status();
+}
+
+const ui = {
+  status: document.getElementById('status'),
+  auto: document.getElementById('bAuto'),
+};
+function status() {
+  const open = nCells - settled;
+  ui.status.textContent = open === 0
+    ? 'settled · seed ' + seed
+    : settled === 0
+      ? 'empty ocean · seed ' + seed
+      : settled + ' / ' + nCells + ' cells · seed ' + seed;
+  ui.auto.classList.toggle('on', auto);
+}
+
+document.getElementById('bGrow').addEventListener('click', () => { auto = false; growChunk(); });
+document.getElementById('bAuto').addEventListener('click', () => {
+  auto = !auto;
+  if (settled === nCells) { newPlanet((Math.random() * 4294967296) >>> 0); auto = true; }
+  status();
+});
+document.getElementById('bFinish').addEventListener('click', finishAll);
+document.getElementById('bNew').addEventListener('click', () => newPlanet((Math.random() * 4294967296) >>> 0));
+
+/* Pointer: drag to turn, wheel to zoom. The planet drifts on its own
+ * until touched, then again after a few idle seconds. */
+let dragging = false, lastX = 0, lastY = 0, idleAt = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  yaw += (e.clientX - lastX) * 0.005;
+  pitch += (e.clientY - lastY) * 0.005;
+  pitch = Math.max(-1.4, Math.min(1.4, pitch));
+  lastX = e.clientX; lastY = e.clientY;
+  idleAt = performance.now() + 3000;
+});
+canvas.addEventListener('pointerup', () => { dragging = false; });
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  dist = Math.max(2.4, Math.min(7.5, dist + e.deltaY * 0.003));
+}, { passive: false });
+
+/* ------------------------------------------------------------------
+ * Frame loop.
+ * ------------------------------------------------------------------ */
+let geoDirty = true;
+function frame(t) {
+  if (!dragging && t > idleAt) yaw += spin;
+  if (auto && t - lastAuto > 240 && settled < nCells) { lastAuto = t; growChunk(); }
+
+  // Morph the shown heights toward their targets; stop touching the
+  // buffers once the terrain has settled.
+  let moving = false;
+  for (let v = 0; v < nVerts; v++) {
+    const d = targetH[v] - shownH[v];
+    if (d > 0.0004 || d < -0.0004) { shownH[v] += d * 0.08; moving = true; }
+    else if (d) shownH[v] = targetH[v];
+  }
+  if (moving || geoDirty) { rebuildGeometry(); geoDirty = false; }
+
+  updateRot();
+  gl.clearColor(0.016, 0.023, 0.043, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  // Stars and halo, additive, no depth.
+  gl.disable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.useProgram(starProg);
+  bind(starProg, 'aStar', bufStar, 3);
+  gl.drawArrays(gl.POINTS, 0, N_STARS);
+
+  gl.useProgram(haloProg);
+  bind(haloProg, 'aQuad', bufQuad, 2);
+  const f = 1 / Math.tan(0.30);
+  const rClipY = f / dist;                 // planet radius in clip units
+  gl.uniform2f(gl.getUniformLocation(haloProg, 'uScale'), rClipY / (W / H), rClipY);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.disable(gl.BLEND);
+
+  // The planet.
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(planetProg);
+  bind(planetProg, 'aPos', bufPos, 3);
+  bind(planetProg, 'aNrm', bufNrm, 3);
+  bind(planetProg, 'aDir', bufDir, 3);
+  bind(planetProg, 'aH', bufH, 1);
+  gl.uniformMatrix3fv(gl.getUniformLocation(planetProg, 'uRot'), false, rot);
+  gl.uniformMatrix4fv(gl.getUniformLocation(planetProg, 'uProj'), false, proj);
+  gl.uniform1f(gl.getUniformLocation(planetProg, 'uDist'), dist);
+  gl.uniform1f(gl.getUniformLocation(planetProg, 'uT'), t * 0.001);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufIdx);
+  gl.drawElements(gl.TRIANGLES, mesh.tris.length, gl.UNSIGNED_SHORT, 0);
+
+  requestAnimationFrame(frame);
+}
+
+function bind(prog, name, buf, comps) {
+  const loc = gl.getAttribLocation(prog, name);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, comps, gl.FLOAT, false, 0, 0);
+}
+
+resize();
+newPlanet((Math.random() * 4294967296) >>> 0);
+shownH.set(targetH);   // start at the empty-ocean level, no morph-in
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

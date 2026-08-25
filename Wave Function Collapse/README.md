@@ -114,12 +114,29 @@ and get no wall.
 
 The wall normal is horizontal and square to the pipe above it, so a fixed
 light (held in camera space, so the globe turns under it rather than carrying
-it along) shades each wall by which way it faces, and the caps by how they
-lean away. Where a shape turns a corner its walls meet at around 120 degrees,
-so the two really are different faces and take different shades.
+it along) shades each wall by which way it faces. Where a shape turns a corner
+its walls meet at around 120 degrees, so the two really are different faces and
+take different shades.
+
+The caps are shaded by a gradient rather than a value of their own. A cell has
+one normal, so all six of its wedges come out at the same brightness and every
+cell draws itself as a hexagon across the shading. A gradient lets the light
+fall through the faces instead. Its stops trace sqrt(1 - (r/R)^2), the lambert
+term at image distance r from the point facing the light: exact while that
+point sits at the centre of the picture, stretching to an ellipse as it moves
+off, and near enough by eye. Shading it properly would take per-vertex colours,
+which Canvas cannot fill.
 
 Caps and walls go into one list and are painted back to front, and nothing is
-dropped for facing away or for sitting behind the horizon. Culling either way
+dropped for facing away or for sitting behind the horizon. The sort key is the
+angle of a face's direction from the view axis, not the depth of a point on it,
+and that key is exact rather than heuristic: the solid is star-shaped about the
+centre, and along any ray from the eye the angle grows strictly monotonically,
+so the nearer of two hits is always the one at the smaller angle. Depth keys
+are what flickered here twice. The depth of a face's midpoint carries its
+radius, so a raised face's key overtakes faces that actually stand in front of
+it, and rotation makes the keys cross back and forth, which pops the paint
+order. The angle ignores the radius entirely, so heights can never reorder. Culling either way
 makes faces blink out as the globe turns them past the threshold, and a shape
 standing off the ball genuinely does show over the silhouette, so there is
 nothing to cull. The core is painted where the list crosses the horizon, which
@@ -134,14 +151,19 @@ since those project inside its silhouette and no part of them could show.
 Sampling the canvas over 24 camera positions, nothing inside the core's outline
 is left uncovered.
 
-Lifted, the pipes are gone from the surface. A pipe between two shapes at
-different heights has two places it could be, and drawn on the ball it would
-lay lines across the shapes rather than around them. Each shape draws its own
-outline at its own radius instead, so a seam comes out as a step, and a pipe
-with the same shape on both sides carries neither wall nor line: it is a spur
-reaching into a shape, not an edge of one. Shapes on the lowest step draw no
-outline at all: everything around them stands over it, so what showed of it
-read as a broken line rather than an edge.
+Lifted, the pipes are gone from the surface, and nothing redraws them: a pipe
+between two shapes at different heights has two places it could be, and drawn
+on the ball it would lay lines across the shapes rather than around them. A
+shape's edge is the step itself, the wall and the change of shade, the way a
+paper model needs no ink along its folds. A pipe with the same shape on both
+sides carries no wall either: it is a spur reaching into a shape, not an edge
+of one.
+
+The caps take their colour from a height ramp, deep shapes a dark slate and
+raised ones a near-white stone, and the light is two tinted sources rather
+than one grey factor, which is what daylight is: the ambient fill is the sky,
+faintly blue, and it is all a shadowed face gets, so shadows cool off; the key
+light is warm white, and at full strength the two sum to just about neutral.
 
 ## Controls
 

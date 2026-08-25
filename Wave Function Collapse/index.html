@@ -983,7 +983,20 @@ const LIFT_RANGE = 0.14;   // radius the biggest and smallest shapes trade
 // under it, so a face keeps its shading as it comes round instead of the
 // whole ball lighting up at once. Direction is from the upper left, towards
 // the viewer.
-const SUN = { x: -0.42, y: 0.62, z: 0.66, ambient: 0.42, diffuse: 0.62 };
+// Two tinted lights instead of one grey factor, which is what daylight is:
+// the ambient fill is the sky, faintly blue, and it is all a shadowed face
+// gets, so shadows cool off; the key light is warm white, and at full strength
+// the two sum to just about neutral.
+const SUN = {
+  x: -0.42, y: 0.62, z: 0.66,
+  ambient: [0.38, 0.43, 0.52],
+  diffuse: [0.68, 0.64, 0.56],
+};
+// The height ramp for lifted shapes: deep shapes take a dark slate,
+// raised ones a pale warm limestone. Cool below and faintly warm above is
+// how stone under daylight reads, so the globe comes out as lit rock.
+const DEEP = [42, 45, 50];
+const HIGH = [222, 218, 210];
 const byte = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
 
 function drawSphere() {
@@ -1035,8 +1048,10 @@ function drawSphere() {
   const lit = (r0, g0, b0) => {
     const l = Math.hypot(nx, ny, nz) || 1;
     const lam = Math.max(0, (nx * SUN.x + ny * SUN.y + nz * SUN.z) / l);
-    const f = SUN.ambient + SUN.diffuse * lam;
-    return 'rgb(' + byte(r0 * f) + ',' + byte(g0 * f) + ',' + byte(b0 * f) + ')';
+    return 'rgb('
+      + byte(r0 * (SUN.ambient[0] + SUN.diffuse[0] * lam)) + ','
+      + byte(g0 * (SUN.ambient[1] + SUN.diffuse[1] * lam)) + ','
+      + byte(b0 * (SUN.ambient[2] + SUN.diffuse[2] * lam)) + ')';
   };
 
   // One pipe: centre out to the midpoint of edge k, following the surface, so
@@ -1159,9 +1174,21 @@ function drawSphere() {
   if (spread) {
     const CAP = 0, WALL = 1;
     const faces = [];
-    const at = (kind, cell, k, own, r, ax, ay, az, bx, by, bz, mr, rFoot) => {
-      project((ax + bx) / 2 * mr, (ay + by) / 2 * mr, (az + bz) / 2 * mr);
-      faces.push({ kind, cell, k, own, r, rFoot, root: regionRoot[own], z: rz });
+    // The sort key is the angle from the view axis, not the depth of a point.
+    // The solid is star-shaped about the centre, and along any ray from the
+    // eye that angle grows strictly monotonically, so the nearer of two hits
+    // is always the one at the smaller angle: sorting by it is exact, not a
+    // heuristic. Depth keys are not, and were the flicker: scaling by the
+    // radius inflates a raised face's key past faces that actually stand in
+    // front of it, and rotation makes the keys cross back and forth. The
+    // angle ignores the radius entirely. (A z-buffer via WebGL would be the
+    // other exact route; it only becomes necessary if the geometry ever
+    // stops being star-shaped, that is, if shapes ever overhang.)
+    const at = (kind, cell, k, own, r, rFoot, ax, ay, az, bx, by, bz) => {
+      const mx = ax + bx, my = ay + by, mz = az + bz;   // halfway along, scale-free
+      const l = Math.hypot(mx, my, mz);
+      rotate(mx / l, my / l, mz / l);
+      faces.push({ kind, cell, k, own, r, rFoot, root: regionRoot[own], z: nz });
     };
     for (let cell = 0; cell < world.n; cell++) {
       if (count[cell] !== 1) continue;
@@ -1174,10 +1201,10 @@ function drawSphere() {
         if (root < 0) continue;
         const r = radOf(root);
         const a3 = own * 3;
-        // The cap's depth comes from halfway out to its corner, so wedges of
+        // The cap's key comes from halfway out to its corner, so wedges of
         // one cell sort against each other rather than all sharing its centre.
-        at(CAP, cell, k, own, r, pos[c3], pos[c3 + 1], pos[c3 + 2],
-          corners[a3], corners[a3 + 1], corners[a3 + 2], r);
+        at(CAP, cell, k, own, r, r, pos[c3], pos[c3 + 1], pos[c3 + 2],
+          corners[a3], corners[a3 + 1], corners[a3 + 2]);
         const prev = (k + d - 1) % d, next = (k + 1) % d;
         // A wall is the step down to the shape across the pipe, so it is the
         // higher shape's to draw and the lower one skips it. Same height, no
@@ -1188,8 +1215,8 @@ function drawSphere() {
           const rFoot = radOf(across);
           if (r <= rFoot) return;
           const e3 = (lo + spoke) * 3;
-          at(WALL, cell, spoke, own, r, pos[c3], pos[c3 + 1], pos[c3 + 2],
-            ends[e3], ends[e3 + 1], ends[e3 + 2], (r + rFoot) / 2, rFoot);
+          at(WALL, cell, spoke, own, r, rFoot, pos[c3], pos[c3 + 1], pos[c3 + 2],
+            ends[e3], ends[e3 + 1], ends[e3 + 2]);
         };
         if (tile.edges[k] && regionRoot[lo + prev] !== root) step(k, lo + prev);
         if (tile.edges[next] && regionRoot[lo + next] !== root) step(next, lo + next);
@@ -1198,66 +1225,96 @@ function drawSphere() {
     faces.sort((a, b) => a.z - b.z);
 
     // What the core covers can still be skipped, which is not the same as
-    // culling: a face no further out than the core projects inside the core's
+    // culling: a cap no further out than the core projects inside the core's
     // silhouette, so once it is behind the core nothing of it could show. The
-    // margin keeps a face straddling the horizon, since only its centre is
+    // margin keeps a face straddling the threshold, since only its centre is
     // tested here. Everything further out is drawn, because out there the core
-    // is not what hides it: the shapes in front are, and they are only as
-    // solid as the depth sort makes them.
-    const behind = horizon - world.spacing;
+    // is not what hides it: the shapes in front are. The core's own silhouette
+    // sits at the angle whose cosine is coreR over the eye distance, which in
+    // the unit-direction key is simply that ratio.
+    const coreZ = coreR / dist;
+    const behind = coreZ - world.spacing;
+    // The caps take a gradient rather than a lambert term of their own. One
+    // normal per cell gives all six of its wedges the same value, which draws
+    // every cell as a hexagon; a gradient lets the light fall through the
+    // faces instead. The stops trace sqrt(1 - (r/R)^2), the lambert term at
+    // image distance r from the point facing the light. That is exact while
+    // the point sits at the centre of the picture and stretches to an ellipse
+    // as it moves off, which is near enough by eye; shading it properly would
+    // mean per-vertex colours, and Canvas cannot fill those. The radius
+    // reaches the far limb from wherever the light lands. One gradient per
+    // height step, built on demand.
+    const sunF = dist / (dist - SUN.z);
+    const sunX = cx + SUN.x * sunF * R, sunY = cy - SUN.y * sunF * R;
+    const sunOff = Math.hypot(sunX - cx, sunY - cy);
+    const gradR = silR / coreR * (1 + LIFT_RANGE) + sunOff;
+    const STOPS = [[0, 1], [0.4, 0.917], [0.7, 0.714], [0.9, 0.436], [1, 0]];
+    const gradByStep = new Map();
+    const capShade = (step, r0, g0, b0) => {
+      let gr = gradByStep.get(step);
+      if (gr) return gr;
+      gr = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, gradR);
+      for (const [stop, lam] of STOPS) {
+        gr.addColorStop(stop, 'rgb('
+          + byte(r0 * (SUN.ambient[0] + SUN.diffuse[0] * lam)) + ','
+          + byte(g0 * (SUN.ambient[1] + SUN.diffuse[1] * lam)) + ','
+          + byte(b0 * (SUN.ambient[2] + SUN.diffuse[2] * lam)) + ')');
+      }
+      gradByStep.set(step, gr);
+      return gr;
+    };
+
     let cored = false;
     for (const f of faces) {
-      if (!cored && f.z > horizon) { paintCore(); cored = true; }
-      if (f.r <= coreR && f.z < behind) continue;
+      if (!cored && f.z > coreZ) { paintCore(); cored = true; }
+      if (f.kind === CAP && f.r <= coreR && f.z < behind) continue;
 
-      // Small shapes ride high and read light, big ones sink and go dark, so
-      // the colour says the same thing the height does. The light does the
-      // rest of the shading.
-      const g = 88 + 76 * (regionLift.get(f.root) + 1) / 2;
+      const step = regionLift.get(f.root);
+
+      // Small shapes ride high and read light and warm, big ones sink into a
+      // dark brown, so the colour says the same thing the height does. The
+      // light does the rest of the shading.
+      const t = (step + 1) / 2;
+      const br = DEEP[0] + (HIGH[0] - DEEP[0]) * t;
+      const bg = DEEP[1] + (HIGH[1] - DEEP[1]) * t;
+      const bb = DEEP[2] + (HIGH[2] - DEEP[2]) * t;
       const warm = heatOf(f.cell) * 0.55;
-      const cr = g + (HOT[0] - g) * warm;
-      const cg = g + (HOT[1] - g) * warm;
-      const cb = g + (HOT[2] - g) * warm;
+      const cr = br + (HOT[0] - br) * warm;
+      const cg = bg + (HOT[1] - bg) * warm;
+      const cb = bb + (HOT[2] - bb) * warm;
 
       if (f.kind === WALL) {
         wallUnder(f.cell, f.k, f.r, f.rFoot, f.own);   // sets normal, traces path
         ctx.fillStyle = lit(cr, cg, cb);
         ctx.fill();
+        // Stroked in its own colour, same as the caps: bands of one wall share
+        // an edge, and Canvas leaves a seam along it otherwise.
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 1;
+        ctx.stroke();
         continue;
       }
 
-      rotate(pos[f.cell * 3], pos[f.cell * 3 + 1], pos[f.cell * 3 + 2]);
       ctx.beginPath();
       traceWedge(f.cell, f.k, f.r);
-      ctx.fillStyle = lit(cr, cg, cb);
+      ctx.fillStyle = capShade(step, br, bg, bb);
       ctx.fill();
       // Stroked in its own colour, to hide the seam Canvas leaves between two
       // polygons sharing an edge.
       ctx.strokeStyle = ctx.fillStyle;
       ctx.lineWidth = 1;
       ctx.stroke();
-
-      // The shape's edge, at its own radius. Both shapes along a pipe draw it,
-      // each at its own height, which is what turns a seam into a step. A pipe
-      // with the same shape on both sides is a spur reaching into it, not an
-      // edge of it, and carries neither wall nor line.
-      const lo = world.nbrOff[f.cell], d = world.deg[f.cell];
-      const tile = tilesFor(d)[soleTile(f.cell)];
-      const next = (f.k + 1) % d;
-      const here = tile.edges[f.k] && regionRoot[lo + (f.k + d - 1) % d] !== f.root;
-      const after = tile.edges[next] && regionRoot[lo + next] !== f.root;
-      // Not on the lowest step. Everything around a shape down there stands
-      // over it, so its outline comes out half covered, which reads as a
-      // broken line rather than an edge.
-      if ((here || after) && regionLift.get(f.root) > -1) {
-        const depth = Math.max(0, (f.z - horizon) / (1 - horizon));
-        ctx.beginPath();
-        if (here) traceSpoke(f.cell, f.k, f.r);
-        if (after) traceSpoke(f.cell, next, f.r);
-        ctx.strokeStyle = mix(heatOf(f.cell), 0.42 + 0.48 * depth);
-        ctx.lineWidth = Math.max(0.8, lw * 0.42);
+      // The collapse front goes over the top, so the gold does not have to be
+      // mixed into every gradient and a cell cooling off does not switch
+      // between two ways of being shaded.
+      if (warm > 0.01) {
+        ctx.globalAlpha = warm;
+        ctx.fillStyle = 'rgb(' + HOT[0] + ',' + HOT[1] + ',' + HOT[2] + ')';
+        ctx.fill();
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
+
     }
     if (!cored) paintCore();
   }

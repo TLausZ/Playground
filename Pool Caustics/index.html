@@ -138,9 +138,9 @@
 <body>
 <canvas id="c"></canvas>
 
-<button id="toggle" aria-label="Settings">☰</button>
+<button id="toggle" aria-label="Settings">✕</button>
 
-<div id="panel" hidden>
+<div id="panel">
   <h1>Caustics</h1>
   <p class="sub">Light reflections on water: contour lines of a wave field. Fast waves, slowly drifting colors.</p>
 
@@ -893,6 +893,8 @@
     toggle.textContent = open ? "✕" : "☰";
   }
   toggle.addEventListener("click", function () { setPanel(panel.hasAttribute("hidden")); });
+  // Small screens put the panel over the picture, so it starts closed there.
+  if (matchMedia("(max-width: 680px), (max-height: 520px)").matches) setPanel(false);
 
   // Anyone asking for reduced motion gets a still frame first and starts
   // the animation themselves.

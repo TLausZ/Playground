@@ -307,19 +307,22 @@ function planAnim() {
   const st = build(PREVIEW), n = +$('strips').value;
   const [, mirrored, p1] = st.map(x => x[1]);
   const stagger = Math.min(90, 2250 / n), dur = 1050;
+  // per pass: strips first spread apart (gap g between them), hold, then fly one by one
   const passPlan = (src, start) => {
-    const sw = Math.floor(src.width / n), H = src.height;
-    return { src, n, sw, H, order: stripOrder(n), from: fit(src.width, src.height), to: fit(H, sw * n),
-             start, stagger, dur, end: start + (n - 1) * stagger + dur };
+    const sw = Math.floor(src.width / n), H = src.height, g = sw * .35;
+    const fly = start + 1200;
+    return { src, n, sw, H, g, order: stripOrder(n), from: fit(src.width + (n - 1) * g, H), to: fit(H, sw * n),
+             start, spreadDur: 800, fly, stagger, dur, end: fly + (n - 1) * stagger + dur };
   };
   const p1Plan = passPlan(mirrored, 600); // the mirrored sheet is the start, held briefly
   const p2Plan = passPlan(p1, p1Plan.end + 400);
-  return { mirrored, p1: p1Plan, p2: p2Plan, end: p2Plan.end + 1200 };
+  return { p1: p1Plan, p2: p2Plan, end: p2Plan.end + 1200 };
 }
 
-function drawStrip(ctx, ps, r, u) {
-  const i = ps.order[r], e = ease(u);
-  const a = { x: ps.from.ox + ps.from.s * (i * ps.sw + ps.sw / 2), y: ps.from.oy + ps.from.s * ps.H / 2, s: ps.from.s };
+// u: flight progress 0..1, sp: how far the strips are spread apart 0..1
+function drawStrip(ctx, ps, r, u, sp) {
+  const i = ps.order[r], e = ease(u), mid = (ps.n - 1) / 2;
+  const a = { x: ps.from.ox + ps.from.s * (i * ps.sw + ps.sw / 2 + mid * ps.g + (i - mid) * ps.g * sp), y: ps.from.oy + ps.from.s * ps.H / 2, s: ps.from.s };
   const b = { x: ps.to.ox + ps.to.s * ps.H / 2, y: ps.to.oy + ps.to.s * (r * ps.sw + ps.sw / 2), s: ps.to.s };
   ctx.save();
   ctx.translate(a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e);
@@ -332,17 +335,13 @@ function drawStrip(ctx, ps, r, u) {
 function drawFrame(P, t) {
   const ctx = $('anim').getContext('2d');
   ctx.clearRect(0, 0, S, S);
-  if (t < P.p1.start) {                      // the whole mirrored sheet, no fade
-    const L = P.p1.from;
-    ctx.drawImage(P.mirrored, L.ox, L.oy, P.mirrored.width * L.s, P.mirrored.height * L.s);
-  } else {                                   // strips fly: done ones below, then pending, moving ones on top
-    const ps = t < P.p2.start ? P.p1 : P.p2;
-    const u = r => clamp((t - ps.start - r * ps.stagger) / ps.dur);
-    const rows = [...Array(ps.n).keys()];
-    for (const r of rows) if (u(r) >= 1) drawStrip(ctx, ps, r, 1);
-    for (const r of rows) if (u(r) <= 0) drawStrip(ctx, ps, r, 0);
-    for (const r of rows) if (u(r) > 0 && u(r) < 1) drawStrip(ctx, ps, r, u(r));
-  }
+  const ps = t < P.p2.start ? P.p1 : P.p2;  // before p1 starts this draws the untouched sheet (sp 0, u 0)
+  const sp = ease(clamp((t - ps.start) / ps.spreadDur));
+  const u = r => clamp((t - ps.fly - r * ps.stagger) / ps.dur);
+  const rows = [...Array(ps.n).keys()];      // done ones below, then pending, moving ones on top
+  for (const r of rows) if (u(r) >= 1) drawStrip(ctx, ps, r, 1, sp);
+  for (const r of rows) if (u(r) <= 0) drawStrip(ctx, ps, r, 0, sp);
+  for (const r of rows) if (u(r) > 0 && u(r) < 1) drawStrip(ctx, ps, r, u(r), sp);
 }
 
 function stopAnim() {

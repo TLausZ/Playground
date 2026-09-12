@@ -39,7 +39,7 @@
   #stage.wide { margin-right: 0; }
   #result, #anim, #sheet { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
   #anim { display: none; }
-  /* without show steps the original sits next to the result at the same height, hover numbers the cells on both */
+  /* without show steps the mirrored sheet sits next to the result at the same height, hover numbers the cells on both */
   #sheet { max-width: calc(50% - 16px); }
   body:not(.steps) #result { max-width: calc(50% - 16px); }
   body.steps #sheet, body.anim #sheet { display: none; }
@@ -219,7 +219,7 @@ function render() {
   out.width = final.width; out.height = final.height;
   out.getContext('2d').drawImage(final, 0, 0);
   $('imginfo').textContent = `${sourceName} · ${source.width} x ${source.height} px${flip ? ' · flipped' : ''}`;
-  attachOverlays(stages[0][1], out, +$('strips').value);
+  attachOverlays(stages[1][1], out, +$('strips').value);
   $('btnFlip').classList.toggle('active', flip);
 
   $('stages').replaceChildren(...stages.slice(0, -1).map(([name, c]) => { // last stage is the result on the left
@@ -239,11 +239,10 @@ function render() {
 
 function toggleFlip() { flip = !flip; render(); }
 
-// Hover overlays, without show steps: the original sits next to the result at the same size.
-// The original is the top-right quarter of the mirrored sheet, so it holds (n/2)^2 of the n^2 cells;
-// every original cell shows up four times in the result, once per mirror copy.
+// Hover overlays, without show steps: the mirrored sheet sits next to the result at the same size.
+// Every cell on the sheet gets a number in reading order (1..n*n); the result shows where each cell went.
 // Sheet cell (col i1, row from bottom i2): pass-1 strip i1, pass-2 strip i2 (pass-2 x runs opposite to sheet y).
-// Result cell (row r2, col c): i1 = order[n-1-c], i2 = order[r2]. Mirror the cell centre into the quarter to find its number.
+// Result cell (row r2, col c): i1 = order[n-1-c], i2 = order[r2].
 function label(ctx, text, x, y, size) {
   ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -256,26 +255,18 @@ function gridLines(ctx, w, h, cw, ch, x0, y0) {
   for (let y = y0; y <= h; y += ch) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
   ctx.stroke();
 }
-function attachOverlays(orig, result, n) {
+function attachOverlays(mirrored, result, n) {
   const sheet = $('sheet');
-  sheet.width = orig.width; sheet.height = orig.height;
-  sheet.getContext('2d').drawImage(orig, 0, 0);
-  const w = orig.width, h = orig.height, W = 2 * w, H = 2 * h;
-  const sw1 = Math.floor(W / n), sw2 = Math.floor(H / n), order = stripOrder(n), size = Math.min(sw1, sw2) * .5;
-  // quarter cells: sheet columns whose centre is right of the axis, rows whose centre is above it, numbered in reading order
-  const cols = [...Array(n).keys()].filter(i => i * sw1 + sw1 / 2 >= w);
-  const rows = [...Array(n).keys()].filter(i => H - i * sw2 - sw2 / 2 < h).reverse(); // top to bottom
-  const no = new Map(); rows.forEach((i2, r) => cols.forEach((i1, c) => no.set(i1 + ',' + i2, r * cols.length + c + 1)));
-  const cellNo = (i1, i2) => {                 // mirror the sheet cell centre into the quarter
-    let X = i1 * sw1 + sw1 / 2, Y = H - i2 * sw2 - sw2 / 2;
-    if (X < w) X = W - X;
-    if (Y >= h) Y = H - Y;
-    return no.get(Math.floor(X / sw1) + ',' + Math.floor((H - Y) / sw2)) || '';
-  };
+  sheet.width = mirrored.width; sheet.height = mirrored.height;
+  sheet.getContext('2d').drawImage(mirrored, 0, 0);
+  const sw1 = Math.floor(mirrored.width / n), sw2 = Math.floor(mirrored.height / n), order = stripOrder(n);
+  const size = Math.min(sw1, sw2) * .5, H = mirrored.height;
+  const cellNo = (i1, i2) => (n - 1 - i2) * n + i1 + 1;
   const draws = [
     [sheet, ctx => {
-      gridLines(ctx, w, h, sw1, sw2, cols[0] * sw1 - w, H - (rows[0] + 1) * sw2);
-      for (const i2 of rows) for (const i1 of cols) label(ctx, no.get(i1 + ',' + i2), i1 * sw1 + sw1 / 2 - w, H - i2 * sw2 - sw2 / 2, size);
+      gridLines(ctx, sheet.width, H, sw1, sw2, 0, H - n * sw2);
+      for (let i2 = 0; i2 < n; i2++) for (let i1 = 0; i1 < n; i1++)
+        label(ctx, cellNo(i1, i2), i1 * sw1 + sw1 / 2, H - i2 * sw2 - sw2 / 2, size);
     }],
     [result, ctx => {
       gridLines(ctx, result.width, result.height, sw1, sw2, 0, 0);

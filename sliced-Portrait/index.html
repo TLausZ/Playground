@@ -37,8 +37,12 @@
     padding: 16px; margin-right: 276px; transition: margin-right .2s;
   }
   #stage.wide { margin-right: 0; }
-  #result, #anim { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
+  #result, #anim, #sheet { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
   #anim { display: none; }
+  /* without show steps the mirrored sheet sits next to the result at the same height, hover numbers the cells on both */
+  #sheet { max-width: calc(50% - 16px); }
+  body:not(.steps) #result { max-width: calc(50% - 16px); }
+  body.steps #sheet, body.anim #sheet { display: none; }
   body.anim #result { display: none; }
   body.anim #anim { display: block; }
   #panel.busy > :not(.btnrow) { pointer-events: none; opacity: .5; }
@@ -100,6 +104,7 @@
 </header>
 <main>
   <div id="stage">
+    <canvas id="sheet"></canvas>
     <canvas id="result"></canvas>
     <canvas id="anim" width="1000" height="1000"></canvas>
     <div id="stages"></div>
@@ -234,40 +239,45 @@ function render() {
 
 function toggleFlip() { flip = !flip; render(); }
 
-// Hover overlays: strip numbers on the mirrored sheet and where they ended up in the result.
-// Result columns are pass-1 strips (band r1 lands in column n-1-r1), result rows are pass-2 strips.
-function overlay(c, draw) {
-  const ctx = c.getContext('2d');
-  let saved = null;
-  c.onmouseenter = () => { saved = ctx.getImageData(0, 0, c.width, c.height); draw(ctx); };
-  c.onmouseleave = () => { if (saved) ctx.putImageData(saved, 0, 0); saved = null; };
-}
+// Hover overlays, without show steps: the mirrored sheet sits next to the result at the same size.
+// Every cell on the sheet gets a number in reading order (1..n*n); the result shows where each cell went.
+// Sheet cell (col i1, row from bottom i2): pass-1 strip i1, pass-2 strip i2 (pass-2 x runs opposite to sheet y).
+// Result cell (row r2, col c): i1 = order[n-1-c], i2 = order[r2].
 function label(ctx, text, x, y, size) {
   ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineWidth = size / 5; ctx.strokeStyle = 'rgba(236,226,205,.85)'; ctx.strokeText(text, x, y);
   ctx.fillStyle = 'rgba(92,74,52,.9)'; ctx.fillText(text, x, y);
 }
-function gridLines(ctx, w, h, cw, ch) {
+function gridLines(ctx, w, h, cw, ch, x0, y0) {
   ctx.strokeStyle = 'rgba(236,226,205,.6)'; ctx.lineWidth = 1; ctx.beginPath();
-  for (let x = cw; x < w; x += cw) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
-  for (let y = ch; y < h; y += ch) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  for (let x = x0; x <= w; x += cw) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = y0; y <= h; y += ch) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
   ctx.stroke();
 }
 function attachOverlays(mirrored, result, n) {
-  const sw1 = Math.floor(mirrored.width / n), order = stripOrder(n);
-  overlay(mirrored, ctx => {
-    gridLines(ctx, mirrored.width, mirrored.height, sw1, mirrored.height);
-    // the step image is small on screen, so the numbers are bigger than a strip and staggered over four rows
-    const fs = sw1 * 2;
-    for (let i = 0; i < n; i++) label(ctx, i + 1, i * sw1 + sw1 / 2, mirrored.height / 2 + (i % 4 - 1.5) * fs * 1.1, fs);
-  });
-  const cw = result.width / n, ch = result.height / n, size = Math.min(cw, ch) * .55;
-  overlay(result, ctx => {
-    gridLines(ctx, result.width, result.height, cw, ch);
-    for (let c = 0; c < n; c++) label(ctx, order[n - 1 - c] + 1, c * cw + cw / 2, ch * (c ? .5 : .3), size); // columns: pass-1 strips
-    for (let r = 0; r < n; r++) label(ctx, order[r] + 1, cw / 2, r * ch + ch * (r ? .5 : .72), size);         // rows: pass-2 strips, corner cell holds both
-  });
+  const sheet = $('sheet');
+  sheet.width = mirrored.width; sheet.height = mirrored.height;
+  sheet.getContext('2d').drawImage(mirrored, 0, 0);
+  const sw1 = Math.floor(mirrored.width / n), sw2 = Math.floor(mirrored.height / n), order = stripOrder(n);
+  const size = Math.min(sw1, sw2) * .5, H = mirrored.height;
+  const cellNo = (i1, i2) => (n - 1 - i2) * n + i1 + 1;
+  const draws = [
+    [sheet, ctx => {
+      gridLines(ctx, sheet.width, H, sw1, sw2, 0, H - n * sw2);
+      for (let i2 = 0; i2 < n; i2++) for (let i1 = 0; i1 < n; i1++)
+        label(ctx, cellNo(i1, i2), i1 * sw1 + sw1 / 2, H - i2 * sw2 - sw2 / 2, size);
+    }],
+    [result, ctx => {
+      gridLines(ctx, result.width, result.height, sw1, sw2, 0, 0);
+      for (let r2 = 0; r2 < n; r2++) for (let c = 0; c < n; c++)
+        label(ctx, cellNo(order[n - 1 - c], order[r2]), c * sw1 + sw1 / 2, r2 * sw2 + sw2 / 2, size);
+    }],
+  ];
+  let saved = null;
+  const enter = () => { if (saved) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
+  const leave = () => { if (!saved) return; draws.forEach(([c], k) => c.getContext('2d').putImageData(saved[k], 0, 0)); saved = null; };
+  for (const [c] of draws) { c.onmouseenter = enter; c.onmouseleave = leave; }
 }
 
 $('strips').oninput = () => { $('stripsOut').textContent = $('strips').value; render(); };

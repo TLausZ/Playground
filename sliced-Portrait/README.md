@@ -6,7 +6,7 @@ A portrait mirrored into a 2x2 grid, cut into vertical strips, each strip turned
 - Strips: how many cuts per pass (10 to 60). Two passes, always.
 - Click the Original step to flip the source, so the faces look outward in the mirrored grid.
 - Black & white toggle and a view of the intermediate steps.
-- Hover the mirrored step or the result to see the strip numbers and where each strip ended up.
+- Without the steps view the mirrored sheet sits next to the result. Hover either one to number every cell and see where each piece ended up.
 - Animate: watch the strips fly into place, both passes, then the sheet turns. Loop it if you like.
 - Export: pick or type the long edge in pixels, WebP, JPEG or PNG. The image is recomputed at that size from the upload, never upscaled from the preview.
 

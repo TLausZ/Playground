@@ -306,7 +306,8 @@ let anim = null; // { plan, t0, raf }
 function planAnim() {
   const st = build(PREVIEW), n = +$('strips').value;
   const [, mirrored, p1] = st.map(x => x[1]);
-  const stagger = Math.min(90, 2250 / n), dur = 1050;
+  // one strip at a time: the next one starts when the previous has landed, about 6 s per pass
+  const dur = Math.max(250, Math.min(600, 6000 / n)), stagger = dur;
   // per pass: strips first spread apart (gap g between them), hold, then fly one by one
   const passPlan = (src, start) => {
     const sw = Math.floor(src.width / n), H = src.height, g = sw * .35;

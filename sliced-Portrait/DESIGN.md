@@ -80,10 +80,9 @@ Feste Masse ausserhalb des Token-Schemas:
 - Titelleiste: 61px hoch, links der Titel, rechts Dateiname und Pixelmasse
   der Vorlage
 - Panel: 276px breit, rechts, mit Lasche zum Einklappen
-- Bildfläche: Endbild zentriert; bei «show steps» das Endbild links, rechts
-  die drei Schrittbilder (original, mirrored, pass 1) als Spalte, höchstens
-  220px breit und zusammen nie höher als die Bildfläche, damit nichts
-  scrollt
+- Bildfläche: Spiegelblatt links, Endbild rechts, gleiche Höhe, beide
+  höchstens halb so breit wie die Fläche; während der Animation nur das
+  Animations-Canvas
 
 ## Components
 

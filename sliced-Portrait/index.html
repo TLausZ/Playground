@@ -39,21 +39,13 @@
   #stage.wide { margin-right: 0; }
   #result, #anim, #sheet { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
   #anim { display: none; }
-  /* without show steps the mirrored sheet sits next to the result at the same height, hover numbers the cells on both */
-  #sheet { max-width: calc(50% - 16px); }
-  body:not(.steps) #result { max-width: calc(50% - 16px); }
-  body.steps #sheet, body.anim #sheet { display: none; }
+  /* the mirrored sheet sits next to the result at the same height, hover numbers the cells on both */
+  #sheet, #result { max-width: calc(50% - 16px); }
+  body.anim #sheet { display: none; }
   body.anim #result { display: none; }
   body.anim #anim { display: block; }
   #panel.busy > :not(.btnrow) { pointer-events: none; opacity: .5; }
   #panel.busy .btnrow > :not(#btnAnim) { pointer-events: none; opacity: .5; }
-  /* steps stack in one column next to the result, so the stage never scrolls */
-  #stages { display: none; flex: none; flex-direction: column; gap: 12px; justify-content: center; }
-  #stages figure { text-align: center; }
-  #stages canvas { max-width: 220px; max-height: calc((100vh - 61px - 32px - 3 * 34px) / 3); border: 1px solid var(--border); display: block; margin: 0 auto; }
-  #stages figcaption { margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
-  body.steps #result, body.steps #anim { max-width: calc(100% - 252px); }
-  body.steps #stages { display: flex; }
 
   #panel {
     position: fixed; top: 61px; right: 0; bottom: 0; width: 276px;
@@ -97,7 +89,7 @@
   #status { font-size: 12px; color: var(--ink-faint); min-height: 17px; }
 </style>
 </head>
-<body class="steps">
+<body>
 <header>
   <h1>sliced portrait</h1>
   <div class="sub" id="imginfo"></div>
@@ -107,7 +99,6 @@
     <canvas id="sheet"></canvas>
     <canvas id="result"></canvas>
     <canvas id="anim" width="1000" height="1000"></canvas>
-    <div id="stages"></div>
   </div>
   <div id="panel">
     <div class="btnrow">
@@ -122,9 +113,8 @@
       <input type="range" id="strips" min="10" max="60" value="20">
     </div>
     <label class="check"><input type="checkbox" id="bw" checked> black &amp; white</label>
-    <label class="check"><input type="checkbox" id="steps" checked> show steps</label>
     <label class="check"><input type="checkbox" id="loop"> loop animation</label>
-    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. click the original step to flip it.</div>
+    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went.</div>
 
     <hr>
     <div class="row"><label>export</label>
@@ -222,24 +212,11 @@ function render() {
   attachOverlays(stages[1][1], out, +$('strips').value);
   $('btnFlip').classList.toggle('active', flip);
 
-  $('stages').replaceChildren(...stages.slice(0, -1).map(([name, c]) => { // last stage is the result on the left
-    const f = document.createElement('figure');
-    const cap = document.createElement('figcaption');
-    cap.textContent = name;
-    if (name === 'original') { cap.textContent += ' · click to flip'; c.style.cursor = 'pointer'; c.onclick = toggleFlip; }
-    if (c.width > c.height) {           // display only: show landscape stages upright, the data stays as is
-      const r = canvas(c.height, c.width), ctx = r.getContext('2d');
-      ctx.translate(r.width, 0); ctx.rotate(Math.PI / 2); ctx.drawImage(c, 0, 0);
-      c = r;
-    }
-    f.append(c, cap);
-    return f;
-  }));
 }
 
 function toggleFlip() { flip = !flip; render(); }
 
-// Hover overlays, without show steps: the mirrored sheet sits next to the result at the same size.
+// Hover overlays: the mirrored sheet sits next to the result at the same size.
 // Every cell on the sheet gets a number in reading order (1..n*n); the result shows where each cell went.
 // Sheet cell (col i1, row from bottom i2): pass-1 strip i1, pass-2 strip i2 (pass-2 x runs opposite to sheet y).
 // Result cell (row r2, col c): i1 = order[n-1-c], i2 = order[r2].
@@ -275,15 +252,13 @@ function attachOverlays(mirrored, result, n) {
     }],
   ];
   let saved = null;
-  // no numbers in the steps view, too small there
-  const enter = () => { if (saved || document.body.classList.contains('steps')) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
+  const enter = () => { if (saved) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
   const leave = () => { if (!saved) return; draws.forEach(([c], k) => c.getContext('2d').putImageData(saved[k], 0, 0)); saved = null; };
   for (const [c] of draws) { c.onmouseenter = enter; c.onmouseleave = leave; }
 }
 
 $('strips').oninput = () => { $('stripsOut').textContent = $('strips').value; render(); };
 $('bw').onchange = render;
-$('steps').onchange = () => document.body.classList.toggle('steps', $('steps').checked);
 $('btnFlip').onclick = toggleFlip;
 $('btnLoad').onclick = () => $('file').click();
 $('sizes').onclick = e => { if (e.target.tagName === 'BUTTON') $('size').value = e.target.textContent; };

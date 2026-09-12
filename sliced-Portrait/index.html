@@ -345,7 +345,8 @@ $('download').onclick = () => {
     const b = new Blob([exportSvg()], { type: 'image/svg+xml' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b); a.download = 'sliced-portrait.svg'; a.click(); URL.revokeObjectURL(a.href);
-    $('status').textContent = `svg · ${(b.size / 1024).toFixed(0)} KB`;
+    const n = +$('strips').value;
+    $('status').textContent = `svg · ${(b.size / 1024).toFixed(0)} KB · ${n * n} clipped cells` + (n > 40 ? ' · vector editors get slow applying this many masks' : '');
     return;
   }
   // Output long edge is about twice the source long edge (2x2 mirror), so scale the source to half the wanted size.

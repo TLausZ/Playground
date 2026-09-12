@@ -106,7 +106,7 @@
       <button id="btnFlip">flip</button>
       <button id="btnAnim">animate</button>
     </div>
-    <input type="file" id="file" accept="image/*" hidden>
+    <input type="file" id="file" accept="image/*,.svg" hidden>
 
     <div class="ctrl">
       <label>strips <span class="val" id="stripsOut">20</span></label>
@@ -114,15 +114,15 @@
     </div>
     <label class="check"><input type="checkbox" id="bw" checked> black &amp; white</label>
     <label class="check"><input type="checkbox" id="loop"> loop animation</label>
-    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went (up to 15 strips).</div>
+    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went (up to 15 strips). svg files work too and export as svg with every cell clipped from the untouched original.</div>
 
     <hr>
     <div class="row"><label>export</label>
       <input type="number" id="size" value="1280" min="200" max="4000" step="100" title="long edge in px">
-      <select id="fmt"><option value="image/webp">webp</option><option value="image/jpeg">jpeg</option><option value="image/png">png</option></select>
+      <select id="fmt"><option value="image/webp">webp</option><option value="image/jpeg">jpeg</option><option value="image/png">png</option><option value="svg">svg</option></select>
     </div>
     <div class="btnrow" id="sizes"><button>1280</button><button>2048</button><button>4000</button></div>
-    <div class="hint">long edge in px · recomputed from the upload, never upscaled</div>
+    <div class="hint">long edge in px · recomputed from the upload, never upscaled · svg keeps the source units</div>
     <button id="download">download</button>
     <div id="status"></div>
   </div>
@@ -134,8 +134,11 @@
 const $ = id => document.getElementById(id);
 const PREVIEW = 1400; // longest side of the source for the live view, keeps passes fast on phones
 
-let source = null;      // ImageBitmap or Image
+let source = null;      // ImageBitmap or Image, the raster used for preview and raster export
 let sourceName = 'warhol.jpg';
+let sourceData = null;  // data url of the uploaded raster (for svg export), null for svg uploads
+let sourceSvg = null;   // { root, vw, vh } of an uploaded svg, else null
+let sourceDims = '';    // shown in the title bar
 let flip = false;       // mirror the source on its vertical axis
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
@@ -208,7 +211,7 @@ function render() {
   const out = $('result');
   out.width = final.width; out.height = final.height;
   out.getContext('2d').drawImage(final, 0, 0);
-  $('imginfo').textContent = `${sourceName} · ${source.width} x ${source.height} px${flip ? ' · flipped' : ''}`;
+  $('imginfo').textContent = `${sourceName} · ${sourceDims}${flip ? ' · flipped' : ''}`;
   attachOverlays(stages[1][1], out, +$('strips').value);
   $('btnFlip').classList.toggle('active', flip);
 
@@ -270,17 +273,81 @@ $('ptoggle').onclick = () => {
   $('ptoggle').innerHTML = hidden ? '&lsaquo;' : '&rsaquo;';
 };
 
+// SVG: read the viewBox (or width/height), remember the DOM for export, rasterise a 4000 px copy for the preview.
+const loadImage = url => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+async function loadSvg(text) {
+  const root = new DOMParser().parseFromString(text, 'image/svg+xml').documentElement;
+  if (root.nodeName !== 'svg') throw new Error('not an svg');
+  let vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || vb.some(isNaN)) {
+    const w = parseFloat(root.getAttribute('width')) || 1000, h = parseFloat(root.getAttribute('height')) || 1000;
+    vb = [0, 0, w, h]; root.setAttribute('viewBox', vb.join(' '));
+  }
+  const [, , vw, vh] = vb, k = 4000 / Math.max(vw, vh);
+  const copy = root.cloneNode(true);
+  copy.setAttribute('width', Math.round(vw * k)); copy.setAttribute('height', Math.round(vh * k));
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(copy)], { type: 'image/svg+xml' }));
+  try { source = await loadImage(url); } finally { URL.revokeObjectURL(url); }
+  sourceSvg = { root, vw, vh }; sourceData = null; sourceDims = `${+vw.toFixed(2)} x ${+vh.toFixed(2)} svg units`;
+}
+const readAs = (f, how) => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r[how](f); });
 $('file').onchange = async e => {
   const f = e.target.files[0];
   if (!f) return;
-  source = await createImageBitmap(f);
+  if (f.type === 'image/svg+xml' || /\.svg$/i.test(f.name)) await loadSvg(await readAs(f, 'readAsText'));
+  else {
+    source = await createImageBitmap(f);
+    sourceData = await readAs(f, 'readAsDataURL'); sourceSvg = null; sourceDims = `${source.width} x ${source.height} px`;
+  }
   sourceName = f.name;
   flip = false;
   render();
 };
 
+// SVG export: the source goes in once as a symbol, the 2x2 sheet is four <use>, every result cell is one
+// <use> of the sheet with the pass-1 and pass-2 transforms combined and a clip rect on the sheet.
+// Same mapping as the hover: result cell (row r2, col c) is pass-1 strip order[n-1-c], pass-2 strip order[r2].
+function exportSvg() {
+  const n = +$('strips').value, order = stripOrder(n);
+  const vw = sourceSvg ? sourceSvg.vw : source.width, vh = sourceSvg ? sourceSvg.vh : source.height;
+  const W = 2 * vw, H = 2 * vh, sw1 = W / n, sw2 = H / n;   // exact widths, no leftover like the raster path
+  const f = x => +x.toFixed(4);
+  let src;
+  if (sourceSvg) {
+    const r = sourceSvg.root, attrs = [...r.attributes].filter(a => !/^(width|height|x|y|xmlns|xmlns:.*|version|id)$/.test(a.name)).map(a => `${a.name}="${a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join(' ');
+    const inner = [...r.childNodes].map(c => new XMLSerializer().serializeToString(c)).join('');
+    src = `<symbol id="src" ${attrs}>${inner}</symbol>`;
+  } else src = `<symbol id="src" viewBox="0 0 ${vw} ${vh}"><image href="${sourceData}" width="${vw}" height="${vh}"/></symbol>`;
+  const use = t => `<use href="#src" width="${vw}" height="${vh}"${t ? ` transform="${t}"` : ''}/>`;
+  const orig = `<g id="orig">${use(flip ? `translate(${vw},0) scale(-1,1)` : '')}</g>`;
+  const sheet = `<g id="sheet">` +
+    `<use href="#orig" transform="translate(${vw},0)"/>` +               // original top right
+    `<use href="#orig" transform="translate(${vw},0) scale(-1,1)"/>` +   // mirror copy top left
+    `<use href="#orig" transform="translate(${vw},${H}) scale(1,-1)"/>` +
+    `<use href="#orig" transform="translate(0,${H}) scale(-1,-1) translate(-${vw},0)"/>` + `</g>`;
+  let cells = '', clips = '';
+  for (let r2 = 0; r2 < n; r2++) for (let c = 0; c < n; c++) {
+    const i2 = order[r2], i1 = order[n - 1 - c], r1 = n - 1 - c, id = `k${r2}_${c}`;
+    clips += `<clipPath id="${id}"><rect x="${f(i1 * sw1)}" y="${f(H - (i2 + 1) * sw2)}" width="${f(sw1)}" height="${f(sw2)}"/></clipPath>`;
+    const t1 = `translate(${f(H)},${f(r1 * sw1)}) rotate(90) translate(${f(-i1 * sw1)},0)`;   // pass 1: strip i1 -> band r1
+    const t2 = `translate(${f(n * sw1)},${f(r2 * sw2)}) rotate(90) translate(${f(-i2 * sw2)},0)`; // pass 2: strip i2 -> band r2
+    cells += `<use href="#sheet" transform="${t2} ${t1}" clip-path="url(#${id})"/>`;
+  }
+  const bw = $('bw').checked ? ' filter="url(#bw)"' : '';
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${f(W)} ${f(H)}" width="${f(W)}" height="${f(H)}">` +
+    `<defs>${src}${orig}${sheet}<filter id="bw"><feColorMatrix type="saturate" values="0"/></filter>${clips}</defs>` +
+    `<g${bw}>${cells}</g></svg>`;
+}
+
 $('download').onclick = () => {
   if (!source) return;
+  if ($('fmt').value === 'svg') {
+    const b = new Blob([exportSvg()], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = 'sliced-portrait.svg'; a.click(); URL.revokeObjectURL(a.href);
+    $('status').textContent = `svg · ${(b.size / 1024).toFixed(0)} KB`;
+    return;
+  }
   // Output long edge is about twice the source long edge (2x2 mirror), so scale the source to half the wanted size.
   const size = Math.min(4000, Math.max(200, +$('size').value || 1280)), fmt = $('fmt').value;
   const stages = build(size / 2), final = stages[stages.length - 1][1];
@@ -368,8 +435,9 @@ $('btnAnim').onclick = () => anim ? stopAnim() : startAnim();
 
 // Default image. Needs an http server, file:// taints the canvas.
 const img = new Image();
-img.onload = () => { source = img; render(); };
+img.onload = () => { source = img; sourceDims = `${img.width} x ${img.height} px`; render(); };
 img.src = 'warhol.jpg';
+fetch('warhol.jpg').then(r => r.blob()).then(b => readAs(b, 'readAsDataURL')).then(d => { if (sourceName === 'warhol.jpg') sourceData = d; }).catch(() => {});
 </script>
 </body>
 </html>

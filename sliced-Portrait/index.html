@@ -305,16 +305,16 @@ let anim = null; // { plan, t0, raf }
 
 function planAnim() {
   const st = build(PREVIEW), n = +$('strips').value;
-  const [orig, mirrored, p1] = st.map(x => x[1]);
-  const stagger = Math.min(60, 1500 / n), dur = 700;
+  const [, mirrored, p1] = st.map(x => x[1]);
+  const stagger = Math.min(90, 2250 / n), dur = 1050;
   const passPlan = (src, start) => {
     const sw = Math.floor(src.width / n), H = src.height;
     return { src, n, sw, H, order: stripOrder(n), from: fit(src.width, src.height), to: fit(H, sw * n),
              start, stagger, dur, end: start + (n - 1) * stagger + dur };
   };
-  const p1Plan = passPlan(mirrored, 1300);
+  const p1Plan = passPlan(mirrored, 600); // the mirrored sheet is the start, held briefly
   const p2Plan = passPlan(p1, p1Plan.end + 400);
-  return { mirrored, quad: { w: orig.width, h: orig.height }, p1: p1Plan, p2: p2Plan, end: p2Plan.end + 1200 };
+  return { mirrored, p1: p1Plan, p2: p2Plan, end: p2Plan.end + 1200 };
 }
 
 function drawStrip(ctx, ps, r, u) {
@@ -332,13 +332,9 @@ function drawStrip(ctx, ps, r, u) {
 function drawFrame(P, t) {
   const ctx = $('anim').getContext('2d');
   ctx.clearRect(0, 0, S, S);
-  if (t < P.p1.start) {                      // mirror copies fade in, original top right
-    const L = P.p1.from, { w, h } = P.quad;
-    [[w, 0, 0], [0, 0, 100], [w, h, 400], [0, h, 700]].forEach(([qx, qy, at], k) => {
-      ctx.globalAlpha = k === 0 ? 1 : clamp((t - at) / 400);
-      ctx.drawImage(P.mirrored, qx, qy, w, h, L.ox + qx * L.s, L.oy + qy * L.s, w * L.s, h * L.s);
-    });
-    ctx.globalAlpha = 1;
+  if (t < P.p1.start) {                      // the whole mirrored sheet, no fade
+    const L = P.p1.from;
+    ctx.drawImage(P.mirrored, L.ox, L.oy, P.mirrored.width * L.s, P.mirrored.height * L.s);
   } else {                                   // strips fly: done ones below, then pending, moving ones on top
     const ps = t < P.p2.start ? P.p1 : P.p2;
     const u = r => clamp((t - ps.start - r * ps.stagger) / ps.dur);

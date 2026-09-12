@@ -114,7 +114,7 @@
     </div>
     <label class="check"><input type="checkbox" id="bw" checked> black &amp; white</label>
     <label class="check"><input type="checkbox" id="loop"> loop animation</label>
-    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went.</div>
+    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went (up to 15 strips).</div>
 
     <hr>
     <div class="row"><label>export</label>
@@ -252,7 +252,8 @@ function attachOverlays(mirrored, result, n) {
     }],
   ];
   let saved = null;
-  const enter = () => { if (saved) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
+  // numbers get unreadable above 15 strips
+  const enter = () => { if (saved || n > 15) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
   const leave = () => { if (!saved) return; draws.forEach(([c], k) => c.getContext('2d').putImageData(saved[k], 0, 0)); saved = null; };
   for (const [c] of draws) { c.onmouseenter = enter; c.onmouseleave = leave; }
 }

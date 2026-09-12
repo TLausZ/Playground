@@ -101,9 +101,13 @@ Feste Masse ausserhalb des Token-Schemas:
 
 ## Do's and Don'ts
 
-- Keine Animationen und keine Übergänge. Zustandswechsel springen.
-  Einzige Ausnahme: das Panel gleitet beim Ein-/Ausklappen mit 0.2s
-  heraus, die Lasche wandert mit.
+- Keine Interface-Animationen und keine Übergänge. Zustandswechsel
+  springen. Einzige Ausnahme: das Panel gleitet beim Ein-/Ausklappen mit
+  0.2s heraus, die Lasche wandert mit. Die Werk-Animation («animate») ist
+  Inhalt, nicht Interface: Streifen fliegen mit ease-in-out, ohne Schatten,
+  ohne Bewegungsunschärfe, auf dem blanken Papier.
+- Gesperrtes Panel während der Animation: Elemente auf 50% Deckkraft,
+  nur «animate»/«stop» bleibt aktiv.
 - Keine Schatten, keine Verläufe.
 - Interface-Sprache: Englisch, knapp, Kleinschreibung.
 - Keine Emojis, keine Icons. Die Lasche benutzt ein Textzeichen (›/‹).

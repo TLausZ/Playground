@@ -37,13 +37,18 @@
     padding: 16px; margin-right: 276px; transition: margin-right .2s;
   }
   #stage.wide { margin-right: 0; }
-  #result { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
+  #result, #anim { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
+  #anim { display: none; }
+  body.anim #result { display: none; }
+  body.anim #anim { display: block; }
+  #panel.busy > :not(.btnrow) { pointer-events: none; opacity: .5; }
+  #panel.busy .btnrow > :not(#btnAnim) { pointer-events: none; opacity: .5; }
   /* steps stack in one column next to the result, so the stage never scrolls */
   #stages { display: none; flex: none; flex-direction: column; gap: 12px; justify-content: center; }
   #stages figure { text-align: center; }
   #stages canvas { max-width: 220px; max-height: calc((100vh - 61px - 32px - 3 * 34px) / 3); border: 1px solid var(--border); display: block; margin: 0 auto; }
   #stages figcaption { margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
-  body.steps #result { max-width: calc(100% - 252px); }
+  body.steps #result, body.steps #anim { max-width: calc(100% - 252px); }
   body.steps #stages { display: flex; }
 
   #panel {
@@ -96,12 +101,14 @@
 <main>
   <div id="stage">
     <canvas id="result"></canvas>
+    <canvas id="anim" width="1000" height="1000"></canvas>
     <div id="stages"></div>
   </div>
   <div id="panel">
     <div class="btnrow">
-      <button id="btnLoad">load image</button>
+      <button id="btnLoad">load</button>
       <button id="btnFlip">flip</button>
+      <button id="btnAnim">animate</button>
     </div>
     <input type="file" id="file" accept="image/*" hidden>
 
@@ -111,6 +118,7 @@
     </div>
     <label class="check"><input type="checkbox" id="bw" checked> black &amp; white</label>
     <label class="check"><input type="checkbox" id="steps" checked> show steps</label>
+    <label class="check"><input type="checkbox" id="loop"> loop animation</label>
     <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. click the original step to flip it.</div>
 
     <hr>
@@ -167,17 +175,20 @@ function mirror(src) {
 }
 
 // Step 2+3: cut n vertical strips, turn each 90 degrees, stack top to bottom,
-// taking strips alternately left and right of the centre cut, moving outwards.
+// taking strips alternately from the left and right edge, moving inwards.
+// Strips are taken from the outside in, alternately left and right: 0, n-1, 1, n-2, ...
+function stripOrder(n) {
+  const order = [];
+  for (let k = 0; order.length < n; k++) {
+    order.push(k);
+    if (n - 1 - k !== k) order.push(n - 1 - k);
+  }
+  return order;
+}
 function pass(src, n) {
   const sw = Math.floor(src.width / n), h = src.height;
   const c = canvas(h, sw * n), ctx = c.getContext('2d');
-  const order = [];
-  for (let k = 0; order.length < n; k++) {          // k = distance from the centre cut
-    const l = Math.ceil(n / 2) - 1 - k, r = Math.floor(n / 2) + k;
-    if (l >= 0) order.push(l);
-    if (r < n && r !== l) order.push(r);
-  }
-  order.forEach((i, row) => {
+  stripOrder(n).forEach((i, row) => {
     ctx.save();
     ctx.translate(h, row * sw);       // band's top-right corner
     ctx.rotate(Math.PI / 2);          // all strips turned the same way
@@ -193,12 +204,7 @@ function build(max) {
   const stages = [['original', prepare(source, max)]];
   stages.push(['mirrored', mirror(stages[0][1])]);
   for (let i = 1; i <= 2; i++) stages.push([`pass ${i}`, pass(stages[stages.length - 1][1], n)]);
-
-  // Two quarter turns leave the sheet upside down, turn it back. Applies to the last stage, so steps view and result agree.
-  const last = stages[stages.length - 1], raw = last[1], final = canvas(raw.width, raw.height), fctx = final.getContext('2d');
-  fctx.translate(final.width, final.height); fctx.rotate(Math.PI); fctx.drawImage(raw, 0, 0);
-  last[1] = final;
-  return stages;
+  return stages; // the sheet stays as it lands after pass 2, no final turn
 }
 
 function render() {
@@ -264,6 +270,81 @@ $('download').onclick = () => {
     $('status').textContent = `${final.width} x ${final.height} px · ${ext} · ${(b.size / 1048576).toFixed(1)} MB`;
   }, fmt, 0.92);
 };
+
+// Animation: the same stages, drawn strip by strip with interpolated position, angle and scale.
+// Every stage is fitted into the 1000x1000 anim canvas, because width and height swap per pass.
+const S = 1000;
+const fit = (w, h) => { const s = S / Math.max(w, h); return { s, ox: (S - w * s) / 2, oy: (S - h * s) / 2 }; };
+const ease = u => u < .5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+const clamp = u => Math.max(0, Math.min(1, u));
+let anim = null; // { plan, t0, raf }
+
+function planAnim() {
+  const st = build(PREVIEW), n = +$('strips').value;
+  const [orig, mirrored, p1] = st.map(x => x[1]);
+  const stagger = Math.min(60, 1500 / n), dur = 700;
+  const passPlan = (src, start) => {
+    const sw = Math.floor(src.width / n), H = src.height;
+    return { src, n, sw, H, order: stripOrder(n), from: fit(src.width, src.height), to: fit(H, sw * n),
+             start, stagger, dur, end: start + (n - 1) * stagger + dur };
+  };
+  const p1Plan = passPlan(mirrored, 1300);
+  const p2Plan = passPlan(p1, p1Plan.end + 400);
+  return { mirrored, quad: { w: orig.width, h: orig.height }, p1: p1Plan, p2: p2Plan, end: p2Plan.end + 1200 };
+}
+
+function drawStrip(ctx, ps, r, u) {
+  const i = ps.order[r], e = ease(u);
+  const a = { x: ps.from.ox + ps.from.s * (i * ps.sw + ps.sw / 2), y: ps.from.oy + ps.from.s * ps.H / 2, s: ps.from.s };
+  const b = { x: ps.to.ox + ps.to.s * ps.H / 2, y: ps.to.oy + ps.to.s * (r * ps.sw + ps.sw / 2), s: ps.to.s };
+  ctx.save();
+  ctx.translate(a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e);
+  ctx.rotate(e * Math.PI / 2);
+  ctx.scale(a.s + (b.s - a.s) * e, a.s + (b.s - a.s) * e);
+  ctx.drawImage(ps.src, i * ps.sw, 0, ps.sw, ps.H, -ps.sw / 2, -ps.H / 2, ps.sw, ps.H);
+  ctx.restore();
+}
+
+function drawFrame(P, t) {
+  const ctx = $('anim').getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  if (t < P.p1.start) {                      // mirror copies fade in, original top right
+    const L = P.p1.from, { w, h } = P.quad;
+    [[w, 0, 0], [0, 0, 100], [w, h, 400], [0, h, 700]].forEach(([qx, qy, at], k) => {
+      ctx.globalAlpha = k === 0 ? 1 : clamp((t - at) / 400);
+      ctx.drawImage(P.mirrored, qx, qy, w, h, L.ox + qx * L.s, L.oy + qy * L.s, w * L.s, h * L.s);
+    });
+    ctx.globalAlpha = 1;
+  } else {                                   // strips fly: done ones below, then pending, moving ones on top
+    const ps = t < P.p2.start ? P.p1 : P.p2;
+    const u = r => clamp((t - ps.start - r * ps.stagger) / ps.dur);
+    const rows = [...Array(ps.n).keys()];
+    for (const r of rows) if (u(r) >= 1) drawStrip(ctx, ps, r, 1);
+    for (const r of rows) if (u(r) <= 0) drawStrip(ctx, ps, r, 0);
+    for (const r of rows) if (u(r) > 0 && u(r) < 1) drawStrip(ctx, ps, r, u(r));
+  }
+}
+
+function stopAnim() {
+  if (!anim) return;
+  cancelAnimationFrame(anim.raf); anim = null;
+  document.body.classList.remove('anim'); $('panel').classList.remove('busy');
+  $('btnAnim').textContent = 'animate';
+}
+function startAnim() {
+  if (!source) return;
+  anim = { plan: planAnim(), t0: performance.now(), raf: 0 };
+  document.body.classList.add('anim'); $('panel').classList.add('busy');
+  $('btnAnim').textContent = 'stop';
+  const tick = now => {
+    let t = now - anim.t0;
+    if (t >= anim.plan.end) { if ($('loop').checked) { anim.t0 = now; t = 0; } else return stopAnim(); }
+    drawFrame(anim.plan, t);
+    anim.raf = requestAnimationFrame(tick);
+  };
+  anim.raf = requestAnimationFrame(tick);
+}
+$('btnAnim').onclick = () => anim ? stopAnim() : startAnim();
 
 // Default image. Needs an http server, file:// taints the canvas.
 const img = new Image();

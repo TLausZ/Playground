@@ -5,55 +5,141 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sliced Portrait</title>
 <style>
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: #ececec; color: #111; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
-  body { display: flex; flex-direction: column; min-height: 100vh; }
-  header { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; padding: 12px 18px; background: #fff; border-bottom: 1px solid #ccc; }
-  header h1 { margin: 0 12px 0 0; font-size: 14px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
-  label { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-  label output { min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
-  input[type=range] { width: 130px; }
-  button, .btn { padding: 6px 12px; border: 1px solid #333; border-radius: 6px; background: #fff; color: #111; cursor: pointer; font: inherit; }
-  button:hover, .btn:hover { background: #111; color: #fff; }
-  input[type=file] { display: none; }
-  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
-  #result { max-width: 100%; max-height: calc(100vh - 100px); box-shadow: 0 0 0 14px #fff, 0 0 0 16px #111, 0 20px 50px rgba(0,0,0,.25); }
-  #stages { display: none; flex-wrap: wrap; gap: 24px; justify-content: center; align-items: flex-end; }
-  #stages figure { margin: 0; text-align: center; }
-  #stages canvas { max-width: min(250px, 90vw); max-height: 42vh; box-shadow: 0 0 0 6px #fff, 0 0 0 7px #111; }
-  #stages figcaption { margin-top: 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #555; }
-  body.steps main { flex-wrap: wrap; gap: 48px; align-items: center; }
-  body.steps #result { max-width: min(100%, 45vw); }
-  body.steps #stages { display: flex; flex: 1; min-width: 300px; }
+  /* Tokens: DESIGN.md */
+  :root {
+    --paper: #ece2cd;
+    --paper-bright: #f2ead6;
+    --ink: #5c4a34;
+    --ink-soft: #6b5a42;
+    --ink-faint: #8a7a5e;
+    --border: rgba(110,92,64,0.25);
+    --border-strong: rgba(110,92,64,0.4);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px; line-height: 1.4;
+    background: var(--paper); color: var(--ink-faint);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    height: 61px; flex: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 15px; font-weight: 600; color: var(--ink); }
+  header .sub { font-size: 12px; color: var(--ink-faint); }
+  main { flex: 1; display: flex; min-height: 0; }
+  #stage {
+    flex: 1; min-width: 0; overflow: auto;
+    display: flex; align-items: center; justify-content: center; gap: 32px;
+    padding: 16px; margin-right: 276px; transition: margin-right .2s;
+  }
+  #stage.wide { margin-right: 0; }
+  #result { max-width: 100%; max-height: calc(100vh - 61px - 32px); border: 1px solid var(--border); }
+  /* steps stack in one column next to the result, so the stage never scrolls */
+  #stages { display: none; flex: none; flex-direction: column; gap: 12px; justify-content: center; }
+  #stages figure { text-align: center; }
+  #stages canvas { max-width: 220px; max-height: calc((100vh - 61px - 32px - 3 * 34px) / 3); border: 1px solid var(--border); display: block; margin: 0 auto; }
+  #stages figcaption { margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
+  body.steps #result { max-width: calc(100% - 252px); }
+  body.steps #stages { display: flex; }
+
+  #panel {
+    position: fixed; top: 61px; right: 0; bottom: 0; width: 276px;
+    background: var(--paper); border-left: 1px solid var(--border);
+    padding: 12px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px;
+    transition: transform .2s;
+  }
+  #panel.hidden { transform: translateX(277px); }
+  #ptoggle {
+    position: fixed; top: 73px; right: 276px; z-index: 3;
+    width: 29px; height: 29px; padding: 0;
+    border: 1px solid var(--border-strong); border-radius: 4px;
+    background: var(--paper); color: var(--ink); cursor: pointer;
+    font-size: 15px; line-height: 27px; transition: right .2s;
+  }
+  #ptoggle.hidden { right: 8px; }
+  .btnrow { display: flex; gap: 8px; }
+  .btnrow > * { flex: 1; }
+  button {
+    font-family: inherit; font-size: 12px; color: var(--ink);
+    background: transparent; border: 1px solid var(--border-strong); border-radius: 4px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  button.active { background: var(--ink); color: var(--paper-bright); }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); margin-bottom: 2px; }
+  .ctrl .val { color: var(--ink); }
+  .ctrl input[type=range] { width: 100%; accent-color: var(--ink); height: 16px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-soft); cursor: pointer; }
+  .check input { accent-color: var(--ink); }
+  select, input[type=number] {
+    font-family: inherit; font-size: 12px; color: var(--ink);
+    background: var(--paper); border: 1px solid var(--border-strong); border-radius: 4px; padding: 4px 6px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row label { flex: none; font-size: 12px; color: var(--ink-soft); }
+  .row input[type=number] { flex: 1; min-width: 0; -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .hint { font-size: 12px; color: var(--ink-faint); }
+  hr { border: none; border-top: 1px solid var(--border); }
+  #status { font-size: 12px; color: var(--ink-faint); min-height: 17px; }
 </style>
 </head>
 <body class="steps">
 <header>
-  <h1>Sliced Portrait</h1>
-  <label class="btn">Upload image <input type="file" id="file" accept="image/*"></label>
-  <label>Strips <input type="range" id="strips" min="10" max="60" value="20"><output id="stripsOut">20</output></label>
-  <label><input type="checkbox" id="bw" checked> Black &amp; white</label>
-  <label><input type="checkbox" id="steps" checked> Show steps</label>
-  <button id="download">Download PNG</button>
+  <h1>sliced portrait</h1>
+  <div class="sub" id="imginfo"></div>
 </header>
 <main>
-  <canvas id="result"></canvas>
-  <div id="stages"></div>
+  <div id="stage">
+    <canvas id="result"></canvas>
+    <div id="stages"></div>
+  </div>
+  <div id="panel">
+    <div class="btnrow">
+      <button id="btnLoad">load image</button>
+      <button id="btnFlip">flip</button>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+
+    <div class="ctrl">
+      <label>strips <span class="val" id="stripsOut">20</span></label>
+      <input type="range" id="strips" min="10" max="60" value="20">
+    </div>
+    <label class="check"><input type="checkbox" id="bw" checked> black &amp; white</label>
+    <label class="check"><input type="checkbox" id="steps" checked> show steps</label>
+    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. click the original step to flip it.</div>
+
+    <hr>
+    <div class="row"><label>export</label>
+      <input type="number" id="size" value="1280" min="200" max="4000" step="100" title="long edge in px">
+      <select id="fmt"><option value="image/webp">webp</option><option value="image/jpeg">jpeg</option><option value="image/png">png</option></select>
+    </div>
+    <div class="btnrow" id="sizes"><button>1280</button><button>2048</button><button>4000</button></div>
+    <div class="hint">long edge in px · recomputed from the upload, never upscaled</div>
+    <button id="download">download</button>
+    <div id="status"></div>
+  </div>
 </main>
+<button id="ptoggle" title="show/hide menu">&rsaquo;</button>
 
 <script>
-// ponytail: whole thing is one function applied n times, see README for the physical process.
+// ponytail: whole thing is one function applied twice, see README for the physical process.
 const $ = id => document.getElementById(id);
-const MAX = 1400; // longest side of the source, keeps passes fast on phones
+const PREVIEW = 1400; // longest side of the source for the live view, keeps passes fast on phones
 
-let source = null; // ImageBitmap or Image
-let flip = false;  // mirror the source on its vertical axis, toggled by clicking the Original step
+let source = null;      // ImageBitmap or Image
+let sourceName = 'warhol.jpg';
+let flip = false;       // mirror the source on its vertical axis
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 
 // Step 0: fit + optional grayscale.
-function prepare(img) {
-  const s = Math.min(1, MAX / Math.max(img.width, img.height));
+function prepare(img, max) {
+  const s = Math.min(1, max / Math.max(img.width, img.height));
   const c = canvas(Math.round(img.width * s), Math.round(img.height * s));
   const ctx = c.getContext('2d');
   if (flip) { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
@@ -101,27 +187,34 @@ function pass(src, n) {
   return c;
 }
 
-function render() {
-  if (!source) return;
+// The whole pipeline. max = longest side the source is scaled to first.
+function build(max) {
   const n = +$('strips').value;
-  const stages = [['Original', prepare(source)]];
-  stages.push(['Mirrored', mirror(stages[0][1])]);
-  for (let i = 1; i <= 2; i++) stages.push([`Pass ${i}`, pass(stages[stages.length - 1][1], n)]);
+  const stages = [['original', prepare(source, max)]];
+  stages.push(['mirrored', mirror(stages[0][1])]);
+  for (let i = 1; i <= 2; i++) stages.push([`pass ${i}`, pass(stages[stages.length - 1][1], n)]);
 
   // Two quarter turns leave the sheet upside down, turn it back. Applies to the last stage, so steps view and result agree.
   const last = stages[stages.length - 1], raw = last[1], final = canvas(raw.width, raw.height), fctx = final.getContext('2d');
   fctx.translate(final.width, final.height); fctx.rotate(Math.PI); fctx.drawImage(raw, 0, 0);
   last[1] = final;
+  return stages;
+}
+
+function render() {
+  if (!source) return;
+  const stages = build(PREVIEW), final = stages[stages.length - 1][1];
   const out = $('result');
   out.width = final.width; out.height = final.height;
   out.getContext('2d').drawImage(final, 0, 0);
+  $('imginfo').textContent = `${sourceName} · ${source.width} x ${source.height} px${flip ? ' · flipped' : ''}`;
+  $('btnFlip').classList.toggle('active', flip);
 
-  const stages_el = $('stages');
-  stages_el.replaceChildren(...stages.slice(0, -1).map(([name, c]) => { // last stage is the result on the left
+  $('stages').replaceChildren(...stages.slice(0, -1).map(([name, c]) => { // last stage is the result on the left
     const f = document.createElement('figure');
     const cap = document.createElement('figcaption');
     cap.textContent = name;
-    if (name === 'Original') { cap.textContent += ' · click to flip'; c.style.cursor = 'pointer'; c.onclick = () => { flip = !flip; render(); }; }
+    if (name === 'original') { cap.textContent += ' · click to flip'; c.style.cursor = 'pointer'; c.onclick = toggleFlip; }
     if (c.width > c.height) {           // display only: show landscape stages upright, the data stays as is
       const r = canvas(c.height, c.width), ctx = r.getContext('2d');
       ctx.translate(r.width, 0); ctx.rotate(Math.PI / 2); ctx.drawImage(c, 0, 0);
@@ -132,26 +225,44 @@ function render() {
   }));
 }
 
-$('strips').oninput = () => { $('stripsOut').value = $('strips').value; render(); };
+function toggleFlip() { flip = !flip; render(); }
+
+$('strips').oninput = () => { $('stripsOut').textContent = $('strips').value; render(); };
 $('bw').onchange = render;
 $('steps').onchange = () => document.body.classList.toggle('steps', $('steps').checked);
+$('btnFlip').onclick = toggleFlip;
+$('btnLoad').onclick = () => $('file').click();
+$('sizes').onclick = e => { if (e.target.tagName === 'BUTTON') $('size').value = e.target.textContent; };
+$('ptoggle').onclick = () => {
+  const hidden = $('panel').classList.toggle('hidden');
+  $('ptoggle').classList.toggle('hidden', hidden);
+  $('stage').classList.toggle('wide', hidden);
+  $('ptoggle').innerHTML = hidden ? '&lsaquo;' : '&rsaquo;';
+};
 
 $('file').onchange = async e => {
   const f = e.target.files[0];
   if (!f) return;
   source = await createImageBitmap(f);
+  sourceName = f.name;
   flip = false;
   render();
 };
 
 $('download').onclick = () => {
-  $('result').toBlob(b => {
+  if (!source) return;
+  // Output long edge is about twice the source long edge (2x2 mirror), so scale the source to half the wanted size.
+  const size = Math.min(4000, Math.max(200, +$('size').value || 1280)), fmt = $('fmt').value;
+  const stages = build(size / 2), final = stages[stages.length - 1][1];
+  final.toBlob(b => {
+    const ext = { 'image/webp': 'webp', 'image/jpeg': 'jpg' }[b.type] || 'png'; // Safari cannot encode webp and hands back png
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
-    a.download = 'sliced-portrait.png';
+    a.download = `sliced-portrait-${Math.max(final.width, final.height)}px.${ext}`;
     a.click();
     URL.revokeObjectURL(a.href);
-  });
+    $('status').textContent = `${final.width} x ${final.height} px · ${ext} · ${(b.size / 1048576).toFixed(1)} MB`;
+  }, fmt, 0.92);
 };
 
 // Default image. Needs an http server, file:// taints the canvas.

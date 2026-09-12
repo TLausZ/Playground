@@ -1,5 +1,7 @@
 # Sliced Portrait
 
+Live: <https://tlausz.github.io/Playground/sliced-Portrait/>
+
 ![The mirrored sheet next to the sliced result](screenshot.jpg)
 
 A portrait mirrored into a 2x2 grid, cut into vertical strips, each strip turned 90 degrees and stacked into a new image. Done twice, the face dissolves into a symmetric tile pattern. Inspired by the paper-and-scalpel version by tete.au.carre on Instagram. One HTML file, Canvas 2D, no dependencies.
@@ -14,5 +16,3 @@ A portrait mirrored into a 2x2 grid, cut into vertical strips, each strip turned
 - SVG export, for SVG sources: the original goes in once, untouched, and every cell is a clipped, transformed reference to it. Gradients, filters and text survive; apply the clip masks in your vector editor if you need real cut edges.
 
 Runs from `file://` too.
-
-Live: <https://tlausz.github.io/Playground/sliced-Portrait/>

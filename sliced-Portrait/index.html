@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sliced Portrait</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #ececec; color: #111; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; padding: 12px 18px; background: #fff; border-bottom: 1px solid #ccc; }
+  header h1 { margin: 0 12px 0 0; font-size: 14px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+  label { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  label output { min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 130px; }
+  button, .btn { padding: 6px 12px; border: 1px solid #333; border-radius: 6px; background: #fff; color: #111; cursor: pointer; font: inherit; }
+  button:hover, .btn:hover { background: #111; color: #fff; }
+  input[type=file] { display: none; }
+  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #result { max-width: 100%; max-height: calc(100vh - 100px); box-shadow: 0 0 0 14px #fff, 0 0 0 16px #111, 0 20px 50px rgba(0,0,0,.25); }
+  #stages { display: none; flex-wrap: wrap; gap: 24px; justify-content: center; align-items: flex-end; }
+  #stages figure { margin: 0; text-align: center; }
+  #stages canvas { max-width: min(250px, 90vw); max-height: 42vh; box-shadow: 0 0 0 6px #fff, 0 0 0 7px #111; }
+  #stages figcaption { margin-top: 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #555; }
+  body.steps main { flex-wrap: wrap; gap: 48px; align-items: center; }
+  body.steps #result { max-width: min(100%, 45vw); }
+  body.steps #stages { display: flex; flex: 1; min-width: 300px; }
+</style>
+</head>
+<body class="steps">
+<header>
+  <h1>Sliced Portrait</h1>
+  <label class="btn">Upload image <input type="file" id="file" accept="image/*"></label>
+  <label>Strips <input type="range" id="strips" min="10" max="60" value="20"><output id="stripsOut">20</output></label>
+  <label><input type="checkbox" id="bw" checked> Black &amp; white</label>
+  <label><input type="checkbox" id="steps" checked> Show steps</label>
+  <button id="download">Download PNG</button>
+</header>
+<main>
+  <canvas id="result"></canvas>
+  <div id="stages"></div>
+</main>
+
+<script>
+// ponytail: whole thing is one function applied n times, see README for the physical process.
+const $ = id => document.getElementById(id);
+const MAX = 1400; // longest side of the source, keeps passes fast on phones
+
+let source = null; // ImageBitmap or Image
+let flip = false;  // mirror the source on its vertical axis, toggled by clicking the Original step
+
+function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+// Step 0: fit + optional grayscale.
+function prepare(img) {
+  const s = Math.min(1, MAX / Math.max(img.width, img.height));
+  const c = canvas(Math.round(img.width * s), Math.round(img.height * s));
+  const ctx = c.getContext('2d');
+  if (flip) { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if ($('bw').checked) {
+    const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
+    for (let i = 0; i < p.length; i += 4) p[i] = p[i + 1] = p[i + 2] = p[i] * .299 + p[i + 1] * .587 + p[i + 2] * .114;
+    ctx.putImageData(d, 0, 0);
+  }
+  return c;
+}
+
+// Step 1: mirror to a 2x2 grid, the four heads meet at the axes. Assumes the source faces right (warhol.jpg does).
+function mirror(src) {
+  const w = src.width, h = src.height, c = canvas(w * 2, h * 2), ctx = c.getContext('2d');
+  for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    ctx.save();
+    ctx.translate(w, sy < 0 ? h * 2 : 0); // original goes right, mirror copy left: faces look outward
+    ctx.scale(sx, sy);
+    ctx.drawImage(src, 0, 0);
+    ctx.restore();
+  }
+  return c;
+}
+
+// Step 2+3: cut n vertical strips, turn each 90 degrees, stack top to bottom,
+// taking strips alternately left and right of the centre cut, moving outwards.
+function pass(src, n) {
+  const sw = Math.floor(src.width / n), h = src.height;
+  const c = canvas(h, sw * n), ctx = c.getContext('2d');
+  const order = [];
+  for (let k = 0; order.length < n; k++) {          // k = distance from the centre cut
+    const l = Math.ceil(n / 2) - 1 - k, r = Math.floor(n / 2) + k;
+    if (l >= 0) order.push(l);
+    if (r < n && r !== l) order.push(r);
+  }
+  order.forEach((i, row) => {
+    ctx.save();
+    ctx.translate(h, row * sw);       // band's top-right corner
+    ctx.rotate(Math.PI / 2);          // all strips turned the same way
+    ctx.drawImage(src, i * sw, 0, sw, h, 0, 0, sw, h);
+    ctx.restore();
+  });
+  return c;
+}
+
+function render() {
+  if (!source) return;
+  const n = +$('strips').value;
+  const stages = [['Original', prepare(source)]];
+  stages.push(['Mirrored', mirror(stages[0][1])]);
+  for (let i = 1; i <= 2; i++) stages.push([`Pass ${i}`, pass(stages[stages.length - 1][1], n)]);
+
+  // Two quarter turns leave the sheet upside down, turn it back. Applies to the last stage, so steps view and result agree.
+  const last = stages[stages.length - 1], raw = last[1], final = canvas(raw.width, raw.height), fctx = final.getContext('2d');
+  fctx.translate(final.width, final.height); fctx.rotate(Math.PI); fctx.drawImage(raw, 0, 0);
+  last[1] = final;
+  const out = $('result');
+  out.width = final.width; out.height = final.height;
+  out.getContext('2d').drawImage(final, 0, 0);
+
+  const stages_el = $('stages');
+  stages_el.replaceChildren(...stages.slice(0, -1).map(([name, c]) => { // last stage is the result on the left
+    const f = document.createElement('figure');
+    const cap = document.createElement('figcaption');
+    cap.textContent = name;
+    if (name === 'Original') { cap.textContent += ' · click to flip'; c.style.cursor = 'pointer'; c.onclick = () => { flip = !flip; render(); }; }
+    if (c.width > c.height) {           // display only: show landscape stages upright, the data stays as is
+      const r = canvas(c.height, c.width), ctx = r.getContext('2d');
+      ctx.translate(r.width, 0); ctx.rotate(Math.PI / 2); ctx.drawImage(c, 0, 0);
+      c = r;
+    }
+    f.append(c, cap);
+    return f;
+  }));
+}
+
+$('strips').oninput = () => { $('stripsOut').value = $('strips').value; render(); };
+$('bw').onchange = render;
+$('steps').onchange = () => document.body.classList.toggle('steps', $('steps').checked);
+
+$('file').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  source = await createImageBitmap(f);
+  flip = false;
+  render();
+};
+
+$('download').onclick = () => {
+  $('result').toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'sliced-portrait.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+};
+
+// Default image. Needs an http server, file:// taints the canvas.
+const img = new Image();
+img.onload = () => { source = img; render(); };
+img.src = 'warhol.jpg';
+</script>
+</body>
+</html>

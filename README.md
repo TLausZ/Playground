@@ -18,6 +18,20 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 <table>
 <tr>
 <td colspan="2" valign="top">
+  <a href="sliced-Portrait/">
+    <img src="sliced-Portrait/preview.webp" alt="Sliced Portrait">
+  </a>
+  <h3><a href="sliced-Portrait/">Sliced Portrait</a></h3>
+  <p>
+    Mirror a portrait, cut it into strips, turn each strip and stack them
+    again. Twice. Upload your own face and watch it dissolve into tiles.<br>
+    readme: <a href="sliced-Portrait/README.md">/sliced-Portrait/README.md</a><br>
+    live: <a href="https://tlausz.github.io/Playground/sliced-Portrait/">/sliced-Portrait/</a>
+  </p>
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
   <a href="Pool%20Caustics/">
     <img src="Pool%20Caustics/preview.webp" alt="Pool Caustics">
   </a>

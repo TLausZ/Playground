@@ -4,7 +4,7 @@ Nachbau einer Papierarbeit von tete.au.carre (Instagram): Porträt spiegeln, in 
 
 ## Struktur
 
-`index.html` plus `warhol.jpg` als Vorlage. Farben, Schrift und Panel-Masse in `DESIGN.md`, übernommen von Contour Drawing im Plotter-Projekt; vor visueller Arbeit lesen. Kein Build. Läuft auch per `file://`: das Vorlagebild steckt als Base64-Data-URL (`WARHOL`, eigenes `<script>` am Ende) in der HTML, weil ein per `file://` geladenes Bild das Canvas tainten würde (kein `getImageData`, kein Export). `warhol.jpg` liegt nur noch als Quelle daneben.
+`index.html`, Vorlagebild eingebettet. Farben, Schrift und Panel-Masse in `DESIGN.md`, übernommen von Contour Drawing im Plotter-Projekt; vor visueller Arbeit lesen. Kein Build. Läuft auch per `file://`: das Vorlagebild steckt als Base64-Data-URL (`WARHOL`, eigenes `<script>` am Ende) in der HTML, weil ein per `file://` geladenes Bild das Canvas tainten würde (kein `getImageData`, kein Export). Die Quelle liegt in `assets/warhol.jpg` (Andy Warhol, aus dem Plotter-Projekt ContourDrawing), wird von der Seite nicht geladen.
 
 ## Wie es funktioniert
 

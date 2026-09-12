@@ -275,7 +275,8 @@ function attachOverlays(mirrored, result, n) {
     }],
   ];
   let saved = null;
-  const enter = () => { if (saved || document.body.classList.contains('steps')) return; // no numbers in the steps view, too small saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
+  // no numbers in the steps view, too small there
+  const enter = () => { if (saved || document.body.classList.contains('steps')) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
   const leave = () => { if (!saved) return; draws.forEach(([c], k) => c.getContext('2d').putImageData(saved[k], 0, 0)); saved = null; };
   for (const [c] of draws) { c.onmouseenter = enter; c.onmouseleave = leave; }
 }

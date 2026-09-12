@@ -32,7 +32,6 @@
   header .sub { font-size: 12px; color: var(--ink-faint); }
   main { flex: 1; display: flex; min-height: 0; }
   #stage {
-    position: relative;
     flex: 1; min-width: 0; overflow: auto;
     display: flex; align-items: center; justify-content: center; gap: 32px;
     padding: 16px; margin-right: 276px; transition: margin-right .2s;
@@ -43,7 +42,6 @@
   /* the mirrored sheet sits next to the result at the same height, hover numbers the cells on both */
   #sheet, #result { max-width: calc(50% - 16px); }
   body.anim #sheet { display: none; }
-  #link { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   body.anim #result { display: none; }
   body.anim #anim { display: block; }
   #panel.busy > :not(.btnrow) { pointer-events: none; opacity: .5; }
@@ -101,7 +99,6 @@
     <canvas id="sheet"></canvas>
     <canvas id="result"></canvas>
     <canvas id="anim" width="1000" height="1000"></canvas>
-    <canvas id="link"></canvas>
   </div>
   <div id="panel">
     <div class="btnrow">
@@ -259,36 +256,10 @@ function attachOverlays(mirrored, result, n) {
         label(ctx, cellNo(order[n - 1 - c], order[r2]), c * sw1 + sw1 / 2, r2 * sw2 + sw2 / 2, size);
     }],
   ];
-  // cursor link: the cell under the cursor and its partner get a frame and a thin line between them,
-  // drawn on #link, which covers the whole stage in screen pixels
-  const link = $('link'), stage = $('stage');
-  const cellRect = (c, x, y, w, h) => {                       // canvas cell -> screen rect relative to the stage
-    const r = c.getBoundingClientRect(), st = stage.getBoundingClientRect(), k = r.width / c.width;
-    return { x: r.left - st.left + x * k, y: r.top - st.top + y * k, w: w * k, h: h * k };
-  };
-  const clearLink = () => { link.width = stage.clientWidth; link.height = stage.clientHeight; };
-  const move = (c, e) => {
-    if (n > 15) return;
-    const r = c.getBoundingClientRect(), k = c.width / r.width;
-    const x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
-    let i1, i2, r2, col;
-    if (c === sheet) { i1 = Math.floor(x / sw1); i2 = Math.floor((H - y) / sw2); r2 = order.indexOf(i2); col = n - 1 - order.indexOf(i1); }
-    else { r2 = Math.floor(y / sw2); col = Math.floor(x / sw1); i1 = order[n - 1 - col]; i2 = order[r2]; }
-    if (i1 < 0 || i1 >= n || i2 < 0 || i2 >= n || r2 < 0 || col < 0) return clearLink();
-    const A = cellRect(sheet, i1 * sw1, H - (i2 + 1) * sw2, sw1, sw2), B = cellRect(result, col * sw1, r2 * sw2, sw1, sw2);
-    clearLink();
-    const ctx = link.getContext('2d');
-    ctx.strokeStyle = 'rgba(92,74,52,.9)'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(A.x + .5, A.y + .5, A.w - 1, A.h - 1); ctx.strokeRect(B.x + .5, B.y + .5, B.w - 1, B.h - 1);
-    ctx.beginPath(); ctx.moveTo(A.x + A.w / 2, A.y + A.h / 2); ctx.lineTo(B.x + B.w / 2, B.y + B.h / 2);
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(236,226,205,.8)'; ctx.stroke();   // paper halo so the line reads over the image
-    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(92,74,52,.9)'; ctx.stroke();
-  };
-  sheet.onmousemove = e => move(sheet, e); result.onmousemove = e => move(result, e);
   let saved = null;
   // numbers get unreadable above 15 strips
   const enter = () => { if (saved || n > 15) return; saved = draws.map(([c]) => c.getContext('2d').getImageData(0, 0, c.width, c.height)); draws.forEach(([c, d]) => d(c.getContext('2d'))); };
-  const leave = () => { clearLink(); if (!saved) return; draws.forEach(([c], k) => c.getContext('2d').putImageData(saved[k], 0, 0)); saved = null; };
+  const leave = () => { if (!saved) return; draws.forEach(([c], k) => c.getContext('2d').putImageData(saved[k], 0, 0)); saved = null; };
   for (const [c] of draws) { c.onmouseenter = enter; c.onmouseleave = leave; }
 }
 

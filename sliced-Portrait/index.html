@@ -214,6 +214,7 @@ function render() {
   out.width = final.width; out.height = final.height;
   out.getContext('2d').drawImage(final, 0, 0);
   $('imginfo').textContent = `${sourceName} · ${source.width} x ${source.height} px${flip ? ' · flipped' : ''}`;
+  attachOverlays(stages[1][1], out, +$('strips').value);
   $('btnFlip').classList.toggle('active', flip);
 
   $('stages').replaceChildren(...stages.slice(0, -1).map(([name, c]) => { // last stage is the result on the left
@@ -232,6 +233,42 @@ function render() {
 }
 
 function toggleFlip() { flip = !flip; render(); }
+
+// Hover overlays: strip numbers on the mirrored sheet and where they ended up in the result.
+// Result columns are pass-1 strips (band r1 lands in column n-1-r1), result rows are pass-2 strips.
+function overlay(c, draw) {
+  const ctx = c.getContext('2d');
+  let saved = null;
+  c.onmouseenter = () => { saved = ctx.getImageData(0, 0, c.width, c.height); draw(ctx); };
+  c.onmouseleave = () => { if (saved) ctx.putImageData(saved, 0, 0); saved = null; };
+}
+function label(ctx, text, x, y, size) {
+  ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = size / 5; ctx.strokeStyle = 'rgba(236,226,205,.85)'; ctx.strokeText(text, x, y);
+  ctx.fillStyle = 'rgba(92,74,52,.9)'; ctx.fillText(text, x, y);
+}
+function gridLines(ctx, w, h, cw, ch) {
+  ctx.strokeStyle = 'rgba(236,226,205,.6)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = cw; x < w; x += cw) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = ch; y < h; y += ch) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke();
+}
+function attachOverlays(mirrored, result, n) {
+  const sw1 = Math.floor(mirrored.width / n), order = stripOrder(n);
+  overlay(mirrored, ctx => {
+    gridLines(ctx, mirrored.width, mirrored.height, sw1, mirrored.height);
+    // the step image is small on screen, so the numbers are bigger than a strip and staggered over four rows
+    const fs = sw1 * 2;
+    for (let i = 0; i < n; i++) label(ctx, i + 1, i * sw1 + sw1 / 2, mirrored.height / 2 + (i % 4 - 1.5) * fs * 1.1, fs);
+  });
+  const cw = result.width / n, ch = result.height / n, size = Math.min(cw, ch) * .55;
+  overlay(result, ctx => {
+    gridLines(ctx, result.width, result.height, cw, ch);
+    for (let c = 0; c < n; c++) label(ctx, order[n - 1 - c] + 1, c * cw + cw / 2, ch * (c ? .5 : .3), size); // columns: pass-1 strips
+    for (let r = 0; r < n; r++) label(ctx, order[r] + 1, cw / 2, r * ch + ch * (r ? .5 : .72), size);         // rows: pass-2 strips, corner cell holds both
+  });
+}
 
 $('strips').oninput = () => { $('stripsOut').textContent = $('strips').value; render(); };
 $('bw').onchange = render;

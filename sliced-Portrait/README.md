@@ -4,7 +4,7 @@ Live: <https://tlausz.github.io/Playground/sliced-Portrait/>
 
 ![The mirrored sheet next to the sliced result](screenshot.jpg)
 
-An image, mirrored into a 2x2 grid, cut into vertical strips, each strip turned 90 degrees and stacked into a new image. Done twice, the picture dissolves into a symmetric tile pattern. Works with any image, portraits just make the mirror axes obvious. Inspired by the paper-and-scalpel version by tete.au.carre on Instagram. One HTML file, Canvas 2D, no dependencies.
+An image, mirrored into a 2x2 grid, cut into vertical strips, each strip turned 90 degrees and stacked into a new image. Done twice, the picture dissolves into a symmetric tile pattern. Works with any image or logo, portraits just make the mirror axes obvious. Inspired by the paper-and-scalpel version by tete.au.carre on Instagram. One HTML file, Canvas 2D, no dependencies.
 
 - Upload your own image or SVG, or start with the default portrait.
 - Strips: how many cuts per pass (10 to 60). Two passes, always.

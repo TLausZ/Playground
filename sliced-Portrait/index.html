@@ -114,7 +114,7 @@
     </div>
     <label class="check"><input type="checkbox" id="bw" checked> black &amp; white</label>
     <label class="check"><input type="checkbox" id="loop"> loop animation</label>
-    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went (up to 15 strips). svg files work too and export as svg with every cell clipped from the untouched original.</div>
+    <div class="hint">mirror the portrait into a 2x2 grid, cut it into strips, turn each strip and stack them again. twice. hover the sheet or the result to see where each piece went (up to 15 strips). svg files work too and export as svg (svg sources only) with every cell clipped from the untouched original.</div>
 
     <hr>
     <div class="row"><label>export</label>
@@ -136,7 +136,6 @@ const PREVIEW = 1400; // longest side of the source for the live view, keeps pas
 
 let source = null;      // ImageBitmap or Image, the raster used for preview and raster export
 let sourceName = 'warhol.jpg';
-let sourceData = null;  // data url of the uploaded raster (for svg export), null for svg uploads
 let sourceSvg = null;   // { root, vw, vh } of an uploaded svg, else null
 let sourceDims = '';    // shown in the title bar
 let flip = false;       // mirror the source on its vertical axis
@@ -214,6 +213,9 @@ function render() {
   $('imginfo').textContent = `${sourceName} · ${sourceDims}${flip ? ' · flipped' : ''}`;
   attachOverlays(stages[1][1], out, +$('strips').value);
   $('btnFlip').classList.toggle('active', flip);
+  const svgOpt = $('fmt').querySelector('[value=svg]');
+  svgOpt.disabled = !sourceSvg;                                   // svg export only for svg sources
+  if (svgOpt.disabled && $('fmt').value === 'svg') $('fmt').value = 'image/webp';
 
 }
 
@@ -288,7 +290,7 @@ async function loadSvg(text) {
   copy.setAttribute('width', Math.round(vw * k)); copy.setAttribute('height', Math.round(vh * k));
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(copy)], { type: 'image/svg+xml' }));
   try { source = await loadImage(url); } finally { URL.revokeObjectURL(url); }
-  sourceSvg = { root, vw, vh }; sourceData = null; sourceDims = `${+vw.toFixed(2)} x ${+vh.toFixed(2)} svg units`;
+  sourceSvg = { root, vw, vh }; sourceDims = `${+vw.toFixed(2)} x ${+vh.toFixed(2)} svg units`;
 }
 const readAs = (f, how) => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r[how](f); });
 $('file').onchange = async e => {
@@ -297,7 +299,7 @@ $('file').onchange = async e => {
   if (f.type === 'image/svg+xml' || /\.svg$/i.test(f.name)) await loadSvg(await readAs(f, 'readAsText'));
   else {
     source = await createImageBitmap(f);
-    sourceData = await readAs(f, 'readAsDataURL'); sourceSvg = null; sourceDims = `${source.width} x ${source.height} px`;
+    sourceSvg = null; sourceDims = `${source.width} x ${source.height} px`;
   }
   sourceName = f.name;
   flip = false;
@@ -317,7 +319,7 @@ function exportSvg() {
     const r = sourceSvg.root, attrs = [...r.attributes].filter(a => !/^(width|height|x|y|xmlns|xmlns:.*|version|id)$/.test(a.name)).map(a => `${a.name}="${a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`).join(' ');
     const inner = [...r.childNodes].map(c => new XMLSerializer().serializeToString(c)).join('');
     src = `<symbol id="src" ${attrs}>${inner}</symbol>`;
-  } else src = `<symbol id="src" viewBox="0 0 ${vw} ${vh}"><image href="${sourceData}" width="${vw}" height="${vh}"/></symbol>`;
+  } else return null; // ponytail: raster sources could embed as <image>, disabled because it would not be a real vector file
   const use = t => `<use href="#src" width="${vw}" height="${vh}"${t ? ` transform="${t}"` : ''}/>`;
   const orig = `<g id="orig">${use(flip ? `translate(${vw},0) scale(-1,1)` : '')}</g>`;
   const sheet = `<g id="sheet">` +
@@ -342,7 +344,9 @@ function exportSvg() {
 $('download').onclick = () => {
   if (!source) return;
   if ($('fmt').value === 'svg') {
-    const b = new Blob([exportSvg()], { type: 'image/svg+xml' });
+    const svg = exportSvg();
+    if (!svg) return;
+    const b = new Blob([svg], { type: 'image/svg+xml' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b); a.download = 'sliced-portrait.svg'; a.click(); URL.revokeObjectURL(a.href);
     const n = +$('strips').value;
@@ -438,7 +442,6 @@ $('btnAnim').onclick = () => anim ? stopAnim() : startAnim();
 const img = new Image();
 img.onload = () => { source = img; sourceDims = `${img.width} x ${img.height} px`; render(); };
 img.src = 'warhol.jpg';
-fetch('warhol.jpg').then(r => r.blob()).then(b => readAs(b, 'readAsDataURL')).then(d => { if (sourceName === 'warhol.jpg') sourceData = d; }).catch(() => {});
 </script>
 </body>
 </html>

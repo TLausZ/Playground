@@ -29,6 +29,7 @@ Werte: 0° 12, 90° 50, 130° 450, 137.5° 1'440, 99.5° 1'486, goldener Winkel 
 ## Regeln
 
 - Zählung nicht auf «bis zur ersten Überlappung» oder «Überlappende grau markieren» zurückbauen. Beides hatte die erste Fassung, und es war falsch: Gefragt ist, wie viele Samen maximal ohne Überlappung in den fixen Umkreis passen (Korrektur vom 10. November 2026).
+- Kein Kern im Mittelpunkt (n = 0), Start bei n = 1 wie bei Vogel. Mit Mittelpunktskern ist das Paar 0 und 1 bei jedem guten Winkel das engste, alle guten Winkel enden bei 601 Kernen und der goldene Winkel sticht nicht mehr heraus. Ohne ihn begrenzt beim goldenen Winkel das Paar 1 und 4 im Zentrum, bei schlechten Winkeln ein Paar am Rand. Dass das Zentrum im Video stark zuckt, liegt an der Neuskalierung (Kernabstand = Umkreis / √N), nicht an der Zählung.
 - 99.5° kommt nahe an den goldenen Winkel heran. Das ist echt, ein weiterer Winkel aus dem goldenen Schnitt, kein Rechenfehler.
 - Tracker-Werte in einer Szene über `self.play(... run_time=1 / FPS)` setzen, nicht mit `set_value` zwischen zwei `wait`: ManimGX übernahm sonst den letzten Wert für die ganze Szene.
 - Titel am Anfang: «What's the best angle to fit the most seeds into a sunflower?» mit «Nature figured it out.» darunter. Der zweite Satz steht auf Wunsch am Anfang, nicht als Auflösung am Schluss.

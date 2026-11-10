@@ -18,6 +18,21 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
 <table>
 <tr>
 <td colspan="2" valign="top">
+  <a href="sunflower/">
+    <img src="sunflower/preview.webp" alt="Sunflower seeds">
+  </a>
+  <h3><a href="sunflower/">Sunflower seeds</a></h3>
+  <p>
+    How many seeds fit on a sunflower before two collide? A video sweeps the
+    turning angle from 0 to 360 degrees; only the golden angle, 137.508
+    degrees, fills the whole disk.<br>
+    readme: <a href="sunflower/README.md">/sunflower/README.md</a><br>
+    live: <a href="https://tlausz.github.io/Playground/sunflower/">/sunflower/</a>
+  </p>
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
   <a href="sliced-Portrait/">
     <img src="sliced-Portrait/preview.webp" alt="Sliced Portrait">
   </a>

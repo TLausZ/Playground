@@ -23,9 +23,9 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   </a>
   <h3><a href="sunflower/">Sunflower seeds</a></h3>
   <p>
-    How many seeds fit on a sunflower before two collide? A video sweeps the
-    turning angle from 0 to 360 degrees; only the golden angle, 137.508
-    degrees, fills the whole disk.<br>
+    What's the best angle to fit the most seeds into a sunflower? A video
+    sweeps the turning angle from 0 to 360 degrees and counts how many seeds
+    fit without overlapping. The golden angle, 137.508 degrees, wins.<br>
     readme: <a href="sunflower/README.md">/sunflower/README.md</a><br>
     live: <a href="https://tlausz.github.io/Playground/sunflower/">/sunflower/</a>
   </p>

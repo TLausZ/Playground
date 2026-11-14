@@ -18,6 +18,8 @@ compiled to WebAssembly through its
 
 Live: https://tlausz.github.io/Playground/evolvedCreatures/
 
+![A creature made of orange, blue and green limbs pushes its way through the loose balls of the course](preview.webp)
+
 ![The simulation: the champion and two ghosts at the first bars of the course, the dashboard on the right](screenshot.webp)
 
 Three islands of 30 creatures evolve side by side and take turns. Every

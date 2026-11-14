@@ -453,8 +453,6 @@ function render() {
     li.lastChild.addEventListener('click', () => { others.splice(k, 1); render(); });
     return li;
   }));
-  $('live').textContent = 'live';
-  $('live').title = 'Updates while the simulation runs in another tab';
 }
 
 function select(k) {
@@ -515,6 +513,12 @@ $('loadfile').addEventListener('change', async e => {
 // Live: die Simulation schreibt nach jeder Generation, andere Tabs bekommen dann ein storage-Ereignis.
 // Höchstens alle 2 s neu zeichnen.
 let pending = 0;
+// «live» nur, solange wirklich neue Stände ankommen: zwei Minuten nach dem letzten erlischt es. So lange, weil
+// eine Generation bei grossen Läufen über eine Minute dauern kann. Nach dem Laden weiss die Seite es noch nicht.
+let seen = 0;
+const showLive = () => { $('live').textContent = Date.now() - seen < 120000 ? 'live' : ''; };
+setInterval(showLive, 10000);
+addEventListener('storage', e => { if (e.key === STORE && e.newValue) { seen = Date.now(); showLive(); } });
 addEventListener('storage', e => { if ((e.key === STORE || e.key === 'evolvedCreatures.unsaved') && !pending) pending = setTimeout(() => { pending = 0; render(); }, 2000); });
 // Nur auf Breitenänderungen reagieren; render ändert die Höhe und löste sonst sich selbst aus.
 let lastWidth = 0;

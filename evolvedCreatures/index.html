@@ -41,6 +41,7 @@
   .tag { position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 3px; background: var(--surface); color: var(--ink); font: 12px var(--mono); white-space: nowrap; pointer-events: none; will-change: transform; }
   .tag.ghost { color: var(--ink-2); opacity: 0.8; }
   .tag { text-align: center; line-height: 1.3; }
+  body:has(#start[open]) .tag { visibility: hidden; }
   #ptoggle, #ntoggle { position: absolute; top: 12px; right: 12px; z-index: 2; width: 29px; height: 29px; padding: 0; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink); font: 15px/27px system-ui, sans-serif; cursor: pointer; }
   #ptoggle:hover, #ntoggle:hover { background: var(--ink); color: var(--surface); }
   #ptoggle:focus-visible, #ntoggle:focus-visible { outline: 2px solid var(--best); outline-offset: 2px; }
@@ -72,6 +73,24 @@
   .set.chk input { accent-color: var(--ink); margin: 0; }
   .help { display: inline-block; width: 15px; height: 15px; margin-left: 5px; padding: 0; border: 1px solid var(--ink-2); border-radius: 50%; background: none; color: var(--ink-2); font: 10px/13px system-ui, sans-serif; text-align: center; vertical-align: 1px; cursor: help; }
   .help:hover, .help:focus-visible { background: var(--ink); color: var(--surface); outline: none; }
+  /* Startauswahl: eine Bühne in 3D, die Bedienung liegt als flache Tafeln darüber. */
+  #start { width: min(1100px, 94vw); height: min(700px, 90vh); max-width: none; max-height: none; padding: 0; overflow: hidden; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--horizon); color: var(--ink); }
+  #start::backdrop { background: color-mix(in srgb, var(--ink) 35%, transparent); }
+  #stage { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #start h2 { position: absolute; left: 20px; top: 16px; margin: 0; padding: 2px 8px; border-radius: 3px; background: var(--surface); font-size: 16px; }
+  #start .btn { padding: 4px 10px; border: 1px solid var(--ink); border-radius: 3px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+  #start .btn:hover, #start .btn[aria-pressed="true"], #start #go { background: var(--ink); color: var(--surface); }
+  #startclose { position: absolute; right: 16px; top: 14px; }
+  #pick { position: absolute; left: 20px; bottom: 68px; min-width: 230px; padding: 12px 14px; border-radius: 4px; background: var(--surface); }
+  #pickname { display: block; font-size: 22px; line-height: 1.2; }
+  #pick dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0 12px; font: 12px var(--mono); }
+  #pick dt { color: var(--ink-2); }
+  #pick dd { margin: 0; }
+  #speedbar { display: inline-block; width: 90px; height: 6px; margin-right: 8px; background: var(--rule); vertical-align: 1px; }
+  #speedbar i { display: block; width: var(--w, 0%); height: 100%; background: var(--ink); }
+  #start #go { padding: 6px 20px; font-size: 14px; }
+  #roster { position: absolute; left: 0; right: 0; bottom: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 0 12px; }
+  .set select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 2px 4px; }
   #helpPop { margin: 0; max-width: 260px; padding: 12px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink-2); font-size: 12px; line-height: 1.4; }
   #helpTitle { margin-bottom: 4px; color: var(--ink); font-weight: 600; }
   .btns { display: flex; gap: 6px; }
@@ -152,6 +171,17 @@
 </script>
 </head>
 <body>
+<dialog id="start" aria-labelledby="starttitle">
+  <canvas id="stage"></canvas>
+  <h2 id="starttitle">Choose your creature</h2>
+  <button id="startclose" class="btn" type="button">Close</button>
+  <div id="pick">
+    <b id="pickname"></b>
+    <dl><dt>speed</dt><dd><span id="speedbar"><i></i></span><span id="pickspeed"></span></dd><dt>limbs</dt><dd id="picklimbs"></dd><dt>joints</dt><dd id="pickjoints"></dd></dl>
+    <button id="go" class="btn" type="button">Start</button>
+  </div>
+  <div id="roster"></div>
+</dialog>
 <div id="helpPop" popover><div id="helpTitle"></div><div id="helpText"></div></div>
 <aside id="netpanel" aria-label="Neural network">
   <header><h1 data-help="Each limb type has its own small network, and every limb of that type runs a copy. Circles show the live values of the first such limb of the champion. Inputs on the left: its own joint angle, the angle of its parent joint, ground contact, the tilt of the body, the rhythm and a constant bias. Then three neurons, each with a loop to itself, and the target angle on the right. Lines are weights, dark for positive, dashed red for negative, thicker for stronger. The grey dashed line is the rhythm passed straight to the target.">Network</h1></header>
@@ -250,6 +280,8 @@ else try { SETTINGS_RAW = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catc
 // Rohwerte, cleanSettings macht daraus gültige Zahlen. Ohne SETTINGS_RAW (Node-Test) gelten
 // die Standardwerte.
 const SPEC = [
+  { group: 'Creature', key: 'preset', label: 'Start from', help: 'What every island starts with: random bodies, or one of six hand-built bodies whose gait was trained beforehand, plus mutated copies of it. The body is free to change from there. Descendants keep the animal in their name.', def: 0, min: 0, max: 6, step: 1,
+    options: ['New creature', 'Quadruped', 'Worm', 'Spider', 'Grasshopper', 'Centipede', 'Biped'] },
   { group: 'Inheritance', key: 'mutations', label: 'Mutations per offspring', help: 'How many random changes each offspring gets. More explores faster, but breaks good creatures more often.', def: 2, min: 0, max: 10, step: 1 },
   { group: 'Inheritance', key: 'sigma', label: 'Mutation strength', help: 'How far one number in the genome moves when it mutates, such as a limb size or the phase of a joint.', def: 0.2, min: 0.05, max: 0.5, step: 0.05 },
   { group: 'Inheritance', key: 'struct', label: 'Structural mutations', help: 'Share of mutations that change the body plan: a limb type or a connection is added or removed. The rest tune sizes, angles and rhythm.', def: 0.15, min: 0, max: 0.5, step: 0.05, unit: '%' },
@@ -404,7 +436,9 @@ function importGenome(g) {
     nodes.push({ v: [...n.v], w: [...n.w], axis: n.axis, recur: n.recur, shape: n.shape ?? 0, conns,
       ...(n.hip !== undefined && { hip: n.hip }), ...(n.hv && { hv: [...n.hv] }), ...(n.sk && { sk: [...n.sk] }) });
   }
-  return total <= MAX_CONNS ? { v: [...g.v], nodes } : null;
+  if (g.kind !== undefined && !(typeof g.kind === 'string' && /^[A-Za-z]{1,20}$/.test(g.kind))) return null;
+  if (g.yaw !== undefined && !(typeof g.yaw === 'number' && Math.abs(g.yaw) <= 4)) return null;
+  return total <= MAX_CONNS ? { v: [...g.v], nodes, ...(g.kind && { kind: g.kind }), ...(g.yaw && { yaw: g.yaw }) } : null;
 }
 
 // Eine Kreatur in den laufenden Lauf einsetzen: auf jeder Insel anstelle der letzten Kreatur der
@@ -744,6 +778,9 @@ function build(G, tree, k, balls) {
 function reset(c) {
   mujoco.mj_resetData(c.model, c.data);
   c.data.qpos[2] = c.z0;
+  // Vorlagen stehen so gedreht am Start, dass ihr trainierter Gang nach +x führt (g.yaw, Drehung um die Hochachse).
+  const yaw = c.plan.G.yaw;
+  if (yaw) { c.data.qpos[3] = Math.cos(yaw / 2); c.data.qpos[6] = Math.sin(yaw / 2); }
   if (S.course) c.data.qpos[0] = S.start;   // Startpunkt auf der Bahn
   c.step = 0;
   c.h.fill(0);
@@ -893,7 +930,18 @@ function runEval(job, steps) {
 // Population kommt, hängt stark vom Zufall ihres Starts ab; mehrere Starts nutzen das aus.
 // Eine Insel, die RESEED eigene Generationen ohne Fortschritt bleibt und nicht die beste ist,
 // beginnt mit Zufallskreaturen neu.
-const randomPop = () => Array.from({ length: POP }, () => ({ g: randomGenome() }));
+// Mit einer Vorlage (S.preset) beginnt jede Insel mit ihr und mutierten Kopien, auch nach einem Neustart der Insel.
+//<presets>
+const PRESETS = [
+  {"g":{"v":[0.5273322945920688],"nodes":[{"v":[0.8,0.3,0.15,0.4751206849740143,0.679509840126363],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":1,"recur":1,"shape":0,"conns":[{"to":1,"v":[0.9,0.75,0.8,0.8,0.11294079189094433,0.5],"mirror":true,"terminal":false},{"to":1,"v":[0.1,0.75,0.8,0.8,0.5,0.5],"mirror":true,"terminal":false}],"hip":1,"hv":[0,0.7250337888432158,0.31254468605747765],"sk":[0.14419331869848723]},{"v":[0.35,0.03,0.03,0.2206205623679331,1],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[{"to":2,"v":[1,0.5,0.62,0.8,0.2536817024463446,0.846852429514202],"mirror":false,"terminal":false}],"hip":0,"hv":[0,0.8779160223201902,0.2951859176820804],"sk":[0.5484494078804681]},{"v":[0.35,0.02,0.02,0.656034177640777,0.6096059038719209],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[],"hip":2,"hv":[0.30842888519260897,0.40957989358060953,0.519710223180509],"sk":[0.5078438528221705]}],"kind":"Quadruped","yaw":3.014},"dist":10.505},
+  {"g":{"v":[1],"nodes":[{"v":[0.35,0.15,0.15,0.5,0.7244466586082113],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":1,"recur":5,"shape":2,"conns":[{"to":0,"v":[1,0.5,0.5,0.8,0.2,0.04163559401736305],"mirror":false,"terminal":false}],"hip":1,"hv":[0.44700313184840784,0.5,0.09458727402006523],"sk":[0.5541382407774196]}],"kind":"Worm","yaw":-1.293},"dist":5.429},
+  {"g":{"v":[0.9904029567055442],"nodes":[{"v":[0.35,0.5,0.3,0.05315245212161135,0.31531930795210805],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":0,"recur":1,"shape":4,"conns":[{"to":1,"v":[0.9,0.667,0.69,0.8,0,0.42828216545161],"mirror":true,"terminal":false},{"to":1,"v":[0.63,0.722,0.69,0.8,0.5727303314993379,0.47918581665650567],"mirror":true,"terminal":false},{"to":1,"v":[0.37,0.778,0.69,0.8,0,0.5],"mirror":true,"terminal":false},{"to":1,"v":[0.1,0.833,0.69,0.8,0.5017179970852386,0.34875664137733686],"mirror":true,"terminal":false}],"hip":1,"hv":[0.7589100125136833,0.9719079603394235,0.5825794901012213],"sk":[0.6776078464434709]},{"v":[0.5,0.02,0.02,0.4792043125800488,1],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[],"hip":2,"hv":[0.052595959935507614,0.5,0.5245113402192099],"sk":[0.52954710538055]}],"kind":"Spider","yaw":-2.15},"dist":11.686},
+  {"g":{"v":[0.42154657721327116],"nodes":[{"v":[0.7,0.15,0.15,0.07959195749475603,0.5445689119128378],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":0,"recur":1,"shape":2,"conns":[{"to":1,"v":[0.2,0.917,0.28,0.8,0.1611097061595982,0],"mirror":true,"terminal":false},{"to":3,"v":[0.9,0.72,0.78,0.8,0.3730674621925981,0.9340150298649629],"mirror":true,"terminal":false}],"hip":2,"hv":[0.3857412906759128,1,0.09234247820072289],"sk":[0.3570702549746013]},{"v":[0.6,0.1,0.1,0.6101032301954957,0.6187279581449359],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[{"to":2,"v":[1,0.5,1,0.8,0.25,0.4167824577876003],"mirror":false,"terminal":false}],"hip":1,"hv":[0.686239322246748,0.378670284137897,0.648437387024354],"sk":[0.6325973395034111]},{"v":[0.8,0.03,0.03,0.8219654644519299,0.6],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":1,"recur":1,"shape":2,"conns":[],"hip":2,"hv":[1,0.919190467834176,0.43535197757601285],"sk":[0.5]},{"v":[0.2,0.02,0.02,0.5309281621121676,0.39043450589751694],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[],"hip":2,"hv":[0.3827821583416564,0.44860778998170625,0.02518587496608493],"sk":[0.6084545273893042]}],"kind":"Grasshopper","yaw":0.303},"dist":5.793},
+  {"g":{"v":[1],"nodes":[{"v":[0.25,0.25,0.1,0.4742246886557238,0.0358726424929948],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":0,"recur":3,"shape":0,"conns":[{"to":1,"v":[0.5,0.75,0.7,0.8,0.0640777658926888,0.4915924749773293],"mirror":true,"terminal":false},{"to":0,"v":[1,0.5,0.5,0.8,0.7194388351415438,0.9460168057353013],"mirror":false,"terminal":false}],"hip":2,"hv":[0.8084451486987727,0.2305351559377382,0.7230664052096482],"sk":[0.2658205223850814]},{"v":[0.45,0.02,0.02,0.7416033158926431,0.6533373168187692],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[],"hip":2,"hv":[0.8281679041988206,0.873110579258406,0.011108720579737233],"sk":[0.6539311900558789]}],"kind":"Centipede","yaw":0.113},"dist":17.618},
+  {"g":{"v":[0.7218538728602886],"nodes":[{"v":[0.1,0.5,0.5,0.5513387775258576,0.39293170763871327],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":0,"conns":[{"to":1,"v":[0.5,0.75,0.92,0.8,0.6800419702726599,0.5],"mirror":true,"terminal":false}],"hip":0,"hv":[0.3209713862965056,0.4410513989472795,0.11461291669210255],"sk":[0.6766543832367968]},{"v":[0.25,0.1,0.1,0.8956177174854248,0.1639994892079213],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":2,"recur":1,"shape":2,"conns":[{"to":2,"v":[1,0.5,0.5,0.8,0.013144718257170496,0],"mirror":false,"terminal":false}],"hip":2,"hv":[0.5817376590577449,0.947754091207271,0.23880201604515303],"sk":[0.23000112882960955]},{"v":[0.25,0.06,0.06,0.6087089265704871,0.3989768100722175],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":0,"recur":1,"shape":2,"conns":[{"to":3,"v":[1,0.25,0.5,0.8,0,0.3822739536389174],"mirror":false,"terminal":false}],"hip":1,"hv":[0.6113382155181248,0.6629799296784848,0.055773534880669745],"sk":[0.0229847040120138]},{"v":[0.35,0.3,0,0.039096210044620064,0.3042102995917331],"w":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],"axis":1,"recur":1,"shape":0,"conns":[],"hip":1,"hv":[0.7055968871840209,0.5161725714049912,0.2568539322489674],"sk":[0.5]}],"kind":"Biped","yaw":0.931},"dist":3.886},
+];
+//</presets>
+const randomPop = () => { const P = PRESETS[S.preset - 1]?.g; return Array.from({ length: POP }, (_, i) => ({ g: !P ? randomGenome() : tidy(i ? mutate(mutate(P)) : structuredClone(P)) })); };
 // Jede Kreatur bekommt einen Namen aus ihrem Genom (Adjektiv plus Tier, wie Ubuntu-Versionen).
 // Gleiches Genom, gleicher Name; ein mutiertes Kind heisst anders. Steht im Kern, weil auch das Ereignisprotokoll Namen braucht.
 const ADJECTIVES = ('Amber Bold Brisk Calm Clever Cosmic Crimson Curious Dapper Daring Dusty Eager Fuzzy Gentle Giddy Golden Grumpy Hasty Humble Jolly Keen Lanky Lucky Mellow Mighty Nimble Noble Plucky Quiet Rapid Rusty Shy Silent Sleepy Sly Snappy Stubborn Sunny Swift Tidy Trusty Velvet Wandering Wiry Witty Wobbly Zesty Zippy '
@@ -903,7 +951,8 @@ function nameOf(g) {
   let h = 2166136261;                               // FNV-1a über das Genom
   for (const ch of JSON.stringify(g)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   h >>>= 0;
-  return ADJECTIVES[h % ADJECTIVES.length] + ' ' + ANIMALS[Math.floor(h / ADJECTIVES.length) % ANIMALS.length];
+  // Nachkommen einer Vorlage behalten ihr Tier (g.kind, etwa «Spider»); zufällig bleibt nur das Adjektiv.
+  return ADJECTIVES[h % ADJECTIVES.length] + ' ' + (g.kind ?? ANIMALS[Math.floor(h / ADJECTIVES.length) % ANIMALS.length]);
 }
 
 let islands = Array.from({ length: ISLANDS }, () => ({ pop: randomPop(), top: null, stale: 0, mean: 0 }));
@@ -1037,6 +1086,7 @@ let savedGeneration = generation;
 // Restart und Apply löschen den ganzen Fortschritt, darum zwei Klicks: der erste scharft den
 // Knopf für 3 s. Kein confirm(), ein Browser-Dialog würde einen Screensaver blockieren.
 let restarting = false;
+const ASK = 'evolvedCreatures.ask';
 function twoClicks(button, action, ask = 'Erase progress?') {
   const label = button.textContent;
   let disarm = 0;
@@ -1051,12 +1101,14 @@ function twoClicks(button, action, ask = 'Erase progress?') {
     action();
   });
 }
-function restartWith(s) {
+// ask: nach dem Reload die Startauswahl zeigen ('ask', nach «Restart») oder nicht ('skip', die Wahl ist schon getroffen).
+function restartWith(s, ask = 'skip') {
   restarting = true;                               // die Hauptschleife speichert sonst vor dem Reload nochmals
+  try { sessionStorage.setItem(ASK, ask); } catch (err) { /* dann entscheidet die URL */ }
   try { localStorage.removeItem(STORE); localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch (err) { /* der Reload beginnt ohnehin neu */ }
   location.replace(location.pathname + settingsQuery(s));
 }
-twoClicks($('restart'), () => restartWith(S));
+twoClicks($('restart'), () => restartWith(S, 'ask'));
 
 // ---- Szene. MuJoCo ist z-up, darum auch die Kamera.
 const token = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -1240,17 +1292,19 @@ const headingOf = info => S.course || S.jump ? 0 : info.heading ?? 0;
 const ballGeometry = new THREE.SphereGeometry(1, 24, 16);
 const ballMats = ['--balls-top', '--balls-side'].map(n => new THREE.MeshLambertMaterial({ color: token(n) }));
 
+const limbGeometry = (type, a, b, d) => type === 2 ? new THREE.SphereGeometry(a, 16, 12)
+  : type === 4 ? new THREE.SphereGeometry(1, 16, 12).scale(a, b, d)
+  : type === 3 ? new THREE.CapsuleGeometry(a, 2 * b, 6, 16).rotateX(Math.PI / 2)
+  : type === 5 ? new THREE.CylinderGeometry(a, a, 2 * b, 16).rotateX(Math.PI / 2)
+  : new THREE.BoxGeometry(2 * a, 2 * b, 2 * d);
+
 function spawn(info, level, index) {
   const c = hatch(info.g, info.net ?? S.net), group = new THREE.Group(), { model } = c;
   group.rotation.z = -headingOf(info);           // Laufrichtung auf +x drehen
   const meshes = c.nodes.map((node, i) => {
     const [a, b, d] = model.geom_size.subarray((i + 1) * 3, (i + 1) * 3 + 3), type = model.geom_type[i + 1];
     // Kapsel und Zylinder: Three.js legt sie auf y, MuJoCo auf z.
-    const geometry = type === 2 ? new THREE.SphereGeometry(a, 16, 12)
-      : type === 4 ? new THREE.SphereGeometry(1, 16, 12).scale(a, b, d)
-      : type === 3 ? new THREE.CapsuleGeometry(a, 2 * b, 6, 16).rotateX(Math.PI / 2)
-      : type === 5 ? new THREE.CylinderGeometry(a, a, 2 * b, 16).rotateX(Math.PI / 2)
-      : new THREE.BoxGeometry(2 * a, 2 * b, 2 * d);
+    const geometry = limbGeometry(type, a, b, d);
     const mesh = new THREE.Mesh(geometry, material(node, level));
     mesh.matrixAutoUpdate = false;
     mesh.castShadow = level === 0;
@@ -1492,13 +1546,16 @@ for (const group of new Set(SPEC.map(o => o.group))) {
   const fs = document.createElement('fieldset');
   fs.append(Object.assign(document.createElement('legend'), { textContent: group }));
   for (const o of SPEC.filter(o => o.group === group)) {
-    const label = document.createElement('label'), input = document.createElement('input');
+    const label = document.createElement('label'), input = document.createElement(o.options ? 'select' : 'input');
     label.className = typeof o.def === 'boolean' ? 'set chk' : 'set';
     const name = document.createElement('span');
     name.append(o.label, helpButton(o));
     if (typeof o.def === 'boolean') {
       input.type = 'checkbox';
       label.append(input, name);
+    } else if (o.options) {
+      o.options.forEach((text, value) => input.append(Object.assign(document.createElement('option'), { value, textContent: text })));
+      label.append(name, input);
     } else {
       Object.assign(input, { type: 'range', min: o.min, max: o.max, step: o.step });
       const slider = document.createElement('span');
@@ -1732,7 +1789,7 @@ function drawTiles() {
 // löste die Leertaste dort zusätzlich einen Klick aus.
 const held = new Set(), tapped = new Set();   // tapped: kurz gedrückt, wirkt einmal
 addEventListener('keydown', e => {
-  if (e.metaKey || e.ctrlKey || e.altKey || /^(input|textarea|select|button|summary)$/i.test(e.target.tagName)) return;
+  if (startDlg.open || e.metaKey || e.ctrlKey || e.altKey || /^(input|textarea|select|button|summary)$/i.test(e.target.tagName)) return;
   const k = e.key.toLowerCase();
   if ('wasd'.includes(k) && k.length === 1) { held.add(k); tapped.add(k); return; }
   if (k === 'r') { pan.set(0, 0, 0); camera.position.copy(focus).add(CAMERA0); return; }
@@ -1770,7 +1827,7 @@ const sent = new WeakSet(), idle = [];   // verschickte Kreaturen (nicht im Spei
 let pool = 0;                            // bereite Worker
 function pump() {
   // Ein verborgener Tab rechnet nicht weiter, wie bisher: gespeichert wird nur in `frame`.
-  while (pool && !paused && !document.hidden) {
+  while (pool && !paused && !document.hidden && !startDlg.open) {   // auch nicht, solange die Startauswahl offen ist
     const open = islands[turn].pop.filter(p => p.fit === undefined);
     if (!open.length) { closeGeneration(); continue; }
     for (const p of open) if (!sent.has(p)) {
@@ -1851,9 +1908,143 @@ function store() {
   return false;
 }
 
+// ---- Startauswahl wie die Figurenwahl in einem Spiel. Erscheint, wenn ein Lauf neu beginnt. Auf einer Bühne
+// stehen sieben Podeste nebeneinander: die Zufallsfigur und die sechs Vorlagen. Jede Figur ist eine echte
+// Simulation und geht auf ihrem Podest am Ort (die Gruppe wird um den Schwerpunkt zurückgeschoben; das Podest
+// ist einfarbig, damit man kein Rutschen sieht). Die Kamera kreist langsam um die gewählte Figur und fährt beim
+// Wechseln zur nächsten. Die Zufallsfigur bekommt bei jedem Durchlauf einen neuen Körper.
+// Solange die Auswahl offen ist, rechnet und läuft dahinter nichts; der Lauf beginnt mit «Start» oder beim
+// Schliessen, dann mit der bisherigen Wahl. Kein Zeitablauf (Entscheid von TLausZ).
+// Die Figuren stehen in der Physik bei x = FAR, weit vor dem Start der Bahn: dort ist auch mit Parcours freie Fläche.
+const startDlg = $('start'), lineup = [], PAD = 1.5, FAR = -40, LOOP = N0 + Math.round(6 / DT);
+const KINDS = SPEC.find(o => o.key === 'preset').options;
+let stage = null, picked = S.preset, stageLast = 0, orbit = 0.6;
+function place(k) {
+  const old = lineup[k];
+  if (old) { free(old.c); stage.scene.remove(old.group); old.meshes.forEach(m => m.geometry.dispose()); }
+  lineup[k] = null;
+  const g = k ? PRESETS[k - 1]?.g : randomGenome();
+  let c = null;
+  try { c = g && hatch(g, false); } catch (e) { /* nicht kompilierbar: Podest bleibt leer */ }
+  if (!c) return;
+  const group = new THREE.Group();
+  const meshes = c.nodes.map((node, i) => {
+    const mesh = new THREE.Mesh(limbGeometry(c.model.geom_type[i + 1], ...c.model.geom_size.subarray((i + 1) * 3, (i + 1) * 3 + 3)), material(node, 0));
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = true;
+    group.add(mesh);
+    return mesh;
+  });
+  group.visible = false;   // bis zum ersten Schritt liegen die Glieder im Ursprung
+  stage.scene.add(group);
+  c.data.qpos[0] = FAR;
+  lineup[k] = { c, group, meshes };
+}
+function showPick() {
+  const w = lineup[picked], p = PRESETS[picked - 1], top = Math.max(...PRESETS.map(p => p.dist));
+  $('pickname').textContent = KINDS[picked];
+  $('speedbar').style.setProperty('--w', p ? p.dist / top * 100 + '%' : '0%');
+  $('pickspeed').textContent = p ? p.dist.toFixed(1) + ' m in 6 s' : 'unknown';
+  $('picklimbs').textContent = w ? w.c.limbs : '–';
+  $('pickjoints').textContent = w ? w.c.joints.length : '–';
+  [...$('roster').children].forEach((b, k) => b.setAttribute('aria-pressed', k === picked));
+  stage.ring.position.x = picked * PAD;
+}
+const choose = k => { picked = (k + KINDS.length) % KINDS.length; showPick(); };
+// Eine Vorlage ist mit zweiter Gelenkachse und Wellenform trainiert; ohne die Schalter könnte die Evolution diese Gene nicht ändern.
+const go = () => picked === S.preset && generation === 0 ? startDlg.close() : restartWith({ ...S, preset: picked, ...(picked && { hip: true, wave: true }) });
+function openStart() {
+  if (!stage) {
+    const cv = $('stage'), r = new THREE.WebGLRenderer({ antialias: true, canvas: cv }), sc = new THREE.Scene();
+    r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    r.shadowMap.enabled = true;
+    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    sc.background = new THREE.Color(token('--horizon'));
+    sc.fog = new THREE.Fog(token('--horizon'), 7, 26);
+    sc.add(new THREE.HemisphereLight(0xffffff, token('--floor-dark'), 1.5));
+    const light = new THREE.DirectionalLight(0xfff4e0, 2.2);
+    light.castShadow = true;
+    light.shadow.mapSize.set(2048, 2048);
+    Object.assign(light.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 30 });
+    light.shadow.bias = -0.0005;
+    sc.add(light, light.target);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ map: checker }));
+    ground.receiveShadow = true;
+    sc.add(ground);
+    const padMat = new THREE.MeshLambertMaterial({ color: token('--surface') }), padGeo = new THREE.CircleGeometry(0.62, 64);
+    KINDS.forEach((text, k) => {
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.position.set(k * PAD, 0, 0.003);
+      pad.receiveShadow = true;
+      sc.add(pad);
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'btn', textContent: text });
+      b.addEventListener('click', () => choose(k));
+      $('roster').append(b);
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 64), new THREE.MeshBasicMaterial({ color: token('--ink') }));
+    ring.position.z = 0.004;
+    sc.add(ring);
+    const cam = new THREE.PerspectiveCamera(35, 1, 0.05, 80);
+    cam.up.set(0, 0, 1);
+    new ResizeObserver(() => { if (!cv.clientWidth) return; r.setSize(cv.clientWidth, cv.clientHeight, false); cam.aspect = cv.clientWidth / cv.clientHeight; cam.updateProjectionMatrix(); }).observe(cv);
+    stage = { renderer: r, scene: sc, camera: cam, light, ring, focus: new THREE.Vector3(S.preset * PAD, 0, 0.2) };
+    $('go').addEventListener('click', go);
+    $('startclose').addEventListener('click', () => startDlg.close());
+    startDlg.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') choose(picked - 1); else if (e.key === 'ArrowRight') choose(picked + 1); else if (e.key === 'Enter') go(); else return;
+      e.preventDefault();
+    });
+    startDlg.addEventListener('click', e => { if (e.target === startDlg) startDlg.close(); });   // Klick neben das Fenster
+    startDlg.addEventListener('close', () => { rateAt = lastGenAt = performance.now(); rateGen = generation;   // die Wartezeit zählt nicht in die Rate
+      KINDS.forEach((_, k) => { const w = lineup[k]; if (w) { free(w.c); stage.scene.remove(w.group); w.meshes.forEach(m => m.geometry.dispose()); } lineup[k] = null; }); });
+  }
+  KINDS.forEach((_, k) => place(k));
+  picked = S.preset;
+  stageLast = performance.now();
+  startDlg.showModal();
+  showPick();
+  $('go').focus();
+}
+function drawStage(now) {
+  const dt = Math.min(0.1, (now - stageLast) / 1000), steps = Math.min(10, Math.round(dt / DT));
+  stageLast = now;
+  KINDS.forEach((_, k) => {
+    if (lineup[k]?.c.step >= LOOP) {
+      if (k) { reset(lineup[k].c); lineup[k].c.data.qpos[0] = FAR; lineup[k].group.visible = false; }
+      else { place(0); if (!picked) showPick(); }   // die Zufallsfigur kommt jedes Mal mit einem neuen Körper
+    }
+    const w = lineup[k];
+    if (!w || !steps) return;
+    advance(w.c, steps);
+    const p = w.c.data.geom_xpos, m = w.c.data.geom_xmat;
+    w.meshes.forEach((mesh, n) => {
+      const i = n + 1;
+      mesh.matrix.set(m[i * 9], m[i * 9 + 1], m[i * 9 + 2], p[i * 3], m[i * 9 + 3], m[i * 9 + 4], m[i * 9 + 5], p[i * 3 + 1],
+        m[i * 9 + 6], m[i * 9 + 7], m[i * 9 + 8], p[i * 3 + 2], 0, 0, 0, 1);
+    });
+    w.group.position.set(k * PAD - w.c.data.subtree_com[3], -w.c.data.subtree_com[4], 0);   // am Ort gehen
+    w.group.visible = true;
+  });
+  const { renderer: r, camera: cam, focus, light } = stage;
+  orbit += dt * 0.25;
+  focus.x += (picked * PAD - focus.x) * Math.min(1, dt * 5);
+  cam.position.set(focus.x + 3.2 * Math.sin(orbit), -3.2 * Math.cos(orbit), 1.1);
+  cam.lookAt(focus);
+  light.position.set(focus.x + 3, -4, 9);
+  light.target.position.copy(focus);
+  r.render(stage.scene, cam);
+}
+// Zeigen, wenn der Lauf bei null beginnt: nach «Restart» immer; sonst nicht, wenn die Wahl gerade getroffen wurde
+// (Startauswahl, «Apply») oder die Adresse eine Vorlage nennt.
+{
+  let ask = null;
+  try { ask = sessionStorage.getItem(ASK); sessionStorage.removeItem(ASK); } catch (e) { /* gesperrt */ }
+  if (generation === 0 && (ask === 'ask' || (ask !== 'skip' && !new URLSearchParams(location.search).has('preset')))) openStart();
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
-  if (pool) pump(); else if (!paused) evolveStep(8);
+  if (startDlg.open) { /* erst wählen: bis die Startauswahl zu ist, rechnet nichts */ } else if (pool) pump(); else if (!paused) evolveStep(8);
   if (generation !== savedGeneration && !restarting) {
     savedGeneration = generation;
     $('unsaved').hidden = store();
@@ -1871,7 +2062,7 @@ function frame(now) {
   const restarted = race.every(r => r.out || r.c.step >= N) || (champion && race[0].info !== champion && race[0].c.step >= 15 / DT
     && !(S.course && race[0].c.data.subtree_com[3] > COURSE.legs[0].x1));
   if (restarted) { reach = race[0].c.data.subtree_com[3]; startRace(); }
-  const steps = paused ? 0 : Math.min(10, Math.round((now - last) / 1000 / DT), N - race[0].c.step);
+  const steps = paused || startDlg.open ? 0 : Math.min(10, Math.round((now - last) / 1000 / DT), N - race[0].c.step);
   last = now;
   // Auf dem Parcours gilt dieselbe Regel wie in der Bewertung (alle 50 Schritte ab Messbeginn): Wo die
   // Wertung endet, bleibt die Kreatur stehen, ausser am Ziel blass wie der älteste Ghost.
@@ -1915,6 +2106,7 @@ function frame(now) {
   sun.position.set(focus.x + 3, focus.y - 4, 9);
   sun.target.position.copy(focus);
   renderer.render(scene, camera);
+  if (startDlg.open) drawStage(now);
 
   // Schildchen über jeder Kreatur. Überdeckt eines ein bereits gesetztes, rutscht es nach oben;
   // der Champion kommt zuerst und bleibt an seinem Platz.

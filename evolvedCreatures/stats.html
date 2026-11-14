@@ -79,7 +79,7 @@
   .help:hover, .help:focus-visible { background: var(--ink); color: var(--surface); outline: none; }
   #helpPop { margin: 0; max-width: 280px; padding: 12px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink-2); font-size: 12px; line-height: 1.4; }
   #helpTitle { margin-bottom: 4px; color: var(--ink); font-weight: 600; }
-  #empty { margin-top: 40px; font-size: 15px; }
+  #empty, #unsaved { margin-top: 40px; font-size: 15px; }
   #runs { list-style: none; margin: 8px 0 0; padding: 0; font: 12px var(--mono); }
   #runs li { display: flex; gap: 10px; align-items: center; padding: 2px 0; }
   #runs i { width: 14px; height: 3px; background: var(--c); }
@@ -103,6 +103,7 @@
     </span>
   </header>
 
+  <p id="unsaved" hidden>The simulation could not store this run: the browser storage is full. Fewer islands or creatures per island need less room.</p>
   <p id="empty" hidden>No run in this browser yet. Open the <a href="index.html">simulation</a>, let it run for a few generations, then come back.</p>
 
   <div id="report">
@@ -364,7 +365,10 @@ function drawGenotype(G) {
 // ---- Seite
 function render() {
   run = readRun();
-  $('empty').hidden = !!run?.history.length;
+  let unsaved = false;
+  try { unsaved = !!localStorage.getItem('evolvedCreatures.unsaved'); } catch (e) { /* gesperrt */ }
+  $('unsaved').hidden = !unsaved;
+  $('empty').hidden = unsaved || !!run?.history.length;
   $('report').hidden = !run?.history.length;
   $('export').disabled = !run?.history.length;
   if (!run?.history.length) return;
@@ -467,7 +471,7 @@ function select(k) {
     ['body', `${e.limbs} limbs, ${e.joints} joints, ${e.types} limb types`],
     ['network share', fmt(e.net)],
   ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
-  if (e.g) drawGenotype(e.g);
+  if (e.g) drawGenotype(e.g); else $('geno').innerHTML = '';   // ältere Champions eines sehr grossen Laufs sind ohne Genom gespeichert
   $('lane').querySelectorAll('div').forEach(d => d.classList.toggle('sel', +d.dataset.k === k));
   $('champs').querySelectorAll('tr[data-k]').forEach(tr => tr.classList.toggle('sel', +tr.dataset.k === k));
 }
@@ -511,7 +515,7 @@ $('loadfile').addEventListener('change', async e => {
 // Live: die Simulation schreibt nach jeder Generation, andere Tabs bekommen dann ein storage-Ereignis.
 // Höchstens alle 2 s neu zeichnen.
 let pending = 0;
-addEventListener('storage', e => { if (e.key === STORE && !pending) pending = setTimeout(() => { pending = 0; render(); }, 2000); });
+addEventListener('storage', e => { if ((e.key === STORE || e.key === 'evolvedCreatures.unsaved') && !pending) pending = setTimeout(() => { pending = 0; render(); }, 2000); });
 // Nur auf Breitenänderungen reagieren; render ändert die Höhe und löste sonst sich selbst aus.
 let lastWidth = 0;
 new ResizeObserver(([e]) => {

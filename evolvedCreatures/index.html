@@ -98,6 +98,8 @@
   #status { min-height: 1.45em; }
   .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
   .tiles span { display: block; }
+  .tiles #unsaved { display: inline; margin-left: 8px; color: var(--highlight); }
+  .tiles #unsaved[hidden] { display: none; }
   .k { color: var(--ink-2); font-size: 12px; }
   .statlink { font-size: 16px !important; line-height: 26px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
   .statlink:hover { color: var(--best); }
@@ -168,7 +170,7 @@
   </details>
 
   <section class="tiles">
-    <div><span class="k">generation</span><span class="n" id="s-gen">0</span></div>
+    <div><span class="k">generation<span id="unsaved" hidden data-help="The browser storage is full, so this run is not stored: it is lost when the page reloads, and the statistics page cannot show it. Fewer islands or creatures per island need less room.">not stored</span></span><span class="n" id="s-gen">0</span></div>
     <div><span class="k">generations per minute</span><span class="n" id="s-rate">0</span></div>
     <div><span class="k" data-help="Fitness of the champion: metres its centre of mass covers in the 6 seconds after settling, times its upright factor, the smallest cosine of its body tilt during the run. A creature that tips over scores 0.">best fitness</span><span class="n" id="s-best">0.00</span></div>
     <div><span class="k" data-help="Average fitness of all creatures in the latest generation, averaged over the islands.">mean fitness</span><span class="n" id="s-mean">0.00</span></div>
@@ -1013,6 +1015,9 @@ try { window.history.replaceState(null, '', location.pathname + settingsQuery(S)
 // den Einstellungen, mit denen er entstand; Läufe von vor den Einstellungen haben die Standardwerte.
 const STORE = 'evolvedCreatures.v24';   // stats.html liest denselben Schlüssel
 let startedAt = new Date().toISOString();
+// Stände früherer Versionen liest niemand mehr, sie belegen aber den Speicher des Ursprungs (rund 5 MB, unter
+// file:// für alle lokalen Seiten zusammen). Ist er voll, scheitert das Speichern still.
+try { for (const k of Object.keys(localStorage)) if (/^evolvedCreatures\.v\d+$/.test(k) && k !== STORE) localStorage.removeItem(k); } catch (e) { /* gesperrt */ }
 try {
   if (resetRequested) localStorage.removeItem(STORE);
   const saved = JSON.parse(localStorage.getItem(STORE));
@@ -1824,14 +1829,34 @@ startRace(); drawTiles(); drawFitness();
 let last = performance.now(), rateAt = last, rateGen = generation;
 const focus = new THREE.Vector3(0, 0, 0.4), v3 = new THREE.Vector3(), pan = new THREE.Vector3();
 
+// Schreibt nach jeder Generation den ganzen Stand. Der Speicher eines Ursprungs fasst rund 5 MB. Passt der
+// Stand nicht mehr, wird die gespeicherte Kopie in zwei Stufen kleiner; der Lauf selbst (Inseln, Champion,
+// Ghosts) bleibt immer ganz. Stufe 1: nur die letzten 20 Champion-Ereignisse behalten ihr Genom, die
+// Statistikseite zeigt ältere Champions dann ohne Genotyp. Stufe 2: vom Verlauf bleiben ausser bei den
+// letzten 1000 Generationen nur beste und mittlere Fitness. Eine erreichte Stufe bleibt. Scheitert auch
+// Stufe 2, steht das unter UNSAVED, damit die Statistikseite es sagen kann.
+const UNSAVED = 'evolvedCreatures.unsaved', KEEP_G = 20, KEEP_ROWS = 1000;
+let slim = 0;
+function store() {
+  for (; slim < 3; slim++) {
+    const withG = slim ? new Set(events.filter(e => e.g).slice(-KEEP_G)) : null;
+    const text = JSON.stringify({ settings: S, islands, turn, reseeds, generation, champion, ghosts, startedAt,
+      history: slim < 2 ? history : history.map((r, i) => i < history.length - KEEP_ROWS ? r.slice(0, 2) : r),
+      events: slim ? events.map(e => e.g && !withG.has(e) ? { ...e, g: undefined } : e) : events,
+      ends: ENDS.map(([x, y, k]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100, k]) });
+    try { localStorage.setItem(STORE, text); localStorage.removeItem(UNSAVED); return true; } catch (e) { /* voll oder gesperrt: nächste Stufe */ }
+  }
+  slim = 2;   // bei der nächsten Generation nochmals versuchen
+  try { localStorage.setItem(UNSAVED, '1'); } catch (e) { /* gesperrt */ }   // der letzte gelungene Stand bleibt liegen
+  return false;
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   if (pool) pump(); else if (!paused) evolveStep(8);
   if (generation !== savedGeneration && !restarting) {
     savedGeneration = generation;
-    // ponytail: schreibt jede Generation den ganzen Stand. Bei sehr langen Läufen history ausdünnen.
-    try { localStorage.setItem(STORE, JSON.stringify({ settings: S, islands, turn, reseeds, generation, champion, ghosts, history, events, startedAt,
-      ends: ENDS.map(([x, y, k]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100, k]) })); } catch (e) { /* Speicher voll oder gesperrt */ }
+    $('unsaved').hidden = store();
     if (!$('panel').hidden) { drawTiles(); drawFitness(); drawEnds(); }
   }
   if (!paused && now - rateAt > 5000) {

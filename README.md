@@ -148,4 +148,20 @@ or try the live versions: **<https://tlausz.github.io/Playground/>**
   </p>
 </td>
 </tr>
+<tr>
+<td colspan="2" valign="top">
+  <a href="evolvedCreatures/">
+    <img src="evolvedCreatures/preview.webp" alt="Evolved Creatures">
+  </a>
+  <h3><a href="evolvedCreatures/">Evolved Creatures</a></h3>
+  <p>
+    Creatures that evolve a body and a way to move, after Karl Sims (1994).
+    A genome grows limbs and joints, MuJoCo simulates them in the browser, and
+    each generation runs a 50 m obstacle course with bumps, loose balls, a
+    staircase and a slalom.<br>
+    readme: <a href="evolvedCreatures/README.md">/evolvedCreatures/README.md</a><br>
+    live: <a href="https://tlausz.github.io/Playground/evolvedCreatures/">/evolvedCreatures/</a>
+  </p>
+</td>
+</tr>
 </table>

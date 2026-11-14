@@ -1,0 +1,1922 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evolved Creatures</title>
+<style>
+  /* Tokens aus DESIGN.md. Three.js liest dieselben Werte per getComputedStyle. */
+  :root {
+    --sky: #5BB8F5;
+    --horizon: #D9EEFB;
+    --floor-light: #FBF8F0;
+    --floor-dark: #E2DACA;
+    --surface: #FCFBF7;
+    --rule: #E3DFD3;
+    --ink: #26251F;
+    --ink-2: #5E5B52;
+    --node-0: #2a78d6;
+    --node-1: #eb6834;
+    --node-2: #1baf7a;
+    --node-3: #eda100;
+    --best: #6250d6;
+    --mean: #8f8c84;
+    --w-pos: #26251F;
+    --w-neg: #d55181;
+    --highlight: #e34948;
+    /* Parcours: Grundkörper in der Farbe des Hindernisses, Lauffläche leuchtend in der des nächsten. */
+    --bumps-top: #B79BFF;     --bumps-side: #FF8A6B;
+    --bars-top: #FF77B4;      --bars-side: #B79BFF;
+    --balls-top: #C9F25A;     --balls-side: #FF77B4;   /* Kugeln: leicht, schwer */
+    --wedges-top: #5EE3E8;    --wedges-side: #C9F25A;
+    --staircase-top: #FF8A6B; --staircase-side: #5EE3E8;
+    --coral-side: #E2614D;   /* Streifen der Slalomstangen */
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { display: flex; background: var(--surface); color: var(--ink); font: 13px/1.45 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #view { position: relative; flex: 1; min-width: 0; overflow: hidden; background: var(--horizon); }
+  #view canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .tag { position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 3px; background: var(--surface); color: var(--ink); font: 12px var(--mono); white-space: nowrap; pointer-events: none; will-change: transform; }
+  .tag.ghost { color: var(--ink-2); opacity: 0.8; }
+  .tag { text-align: center; line-height: 1.3; }
+  #ptoggle, #ntoggle { position: absolute; top: 12px; right: 12px; z-index: 2; width: 29px; height: 29px; padding: 0; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink); font: 15px/27px system-ui, sans-serif; cursor: pointer; }
+  #ptoggle:hover, #ntoggle:hover { background: var(--ink); color: var(--surface); }
+  #ptoggle:focus-visible, #ntoggle:focus-visible { outline: 2px solid var(--best); outline-offset: 2px; }
+  #ntoggle { right: auto; left: 12px; }
+  #viewhelp { position: absolute; left: 12px; bottom: 12px; z-index: 2; }
+  #viewhelp .help { width: 29px; height: 29px; margin: 0; border-radius: 4px; background: var(--surface); color: var(--ink); font: 15px/27px system-ui, sans-serif; }
+  #panel[hidden], #netpanel[hidden], #ntoggle[hidden] { display: none; }
+  #settings { margin-top: 12px; }
+  #settings summary { cursor: pointer; font-weight: 600; }
+  #settings fieldset { margin: 10px 0 0; padding: 0; border: 0; }
+  #settings legend { padding: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+  .set { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; margin-top: 6px; }
+  /* Eigener Regler, damit der Ghost des Standardwerts genau dort sitzt, wo der Knopf bei diesem
+     Wert sässe: Spur und Ghost liegen unter dem Input, dessen eigene Spur ist durchsichtig.
+     --v ist der Wert, --d der Standard, beide als Anteil 0 bis 1. */
+  .slider { --t: 14px; position: relative; grid-column: 1 / -1; height: 18px; margin-top: 2px; }
+  .slider .track { position: absolute; left: 0; right: 0; top: 7px; height: 4px; border-radius: 2px;
+    background: linear-gradient(to right, var(--ink) calc(var(--v) * (100% - var(--t)) + var(--t) / 2), var(--rule) 0); }
+  .slider .ghost { position: absolute; top: 2px; left: calc(var(--d) * (100% - var(--t))); width: var(--t); height: var(--t); box-sizing: border-box;
+    border: 1.5px solid var(--ink-2); border-radius: 50%; background: var(--surface); opacity: 0.6; }
+  .slider input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+  .slider input::-webkit-slider-runnable-track { height: 18px; background: transparent; }
+  .slider input::-webkit-slider-thumb { -webkit-appearance: none; width: var(--t); height: var(--t); margin-top: 2px; border-radius: 50%; background: var(--ink); }
+  .slider input::-moz-range-track { height: 18px; background: transparent; }
+  .slider input::-moz-range-thumb { width: var(--t); height: var(--t); border: 0; border-radius: 50%; background: var(--ink); }
+  .set > span { white-space: nowrap; }
+  .set output { font-family: var(--mono); text-align: right; }
+  .set.chk { display: flex; align-items: center; gap: 8px; }
+  .set.chk input { accent-color: var(--ink); margin: 0; }
+  .help { display: inline-block; width: 15px; height: 15px; margin-left: 5px; padding: 0; border: 1px solid var(--ink-2); border-radius: 50%; background: none; color: var(--ink-2); font: 10px/13px system-ui, sans-serif; text-align: center; vertical-align: 1px; cursor: help; }
+  .help:hover, .help:focus-visible { background: var(--ink); color: var(--surface); outline: none; }
+  #helpPop { margin: 0; max-width: 260px; padding: 12px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink-2); font-size: 12px; line-height: 1.4; }
+  #helpTitle { margin-bottom: 4px; color: var(--ink); font-weight: 600; }
+  .btns { display: flex; gap: 6px; }
+  #settings .btns { margin-top: 12px; }
+  .btns .btn { padding: 4px 8px; white-space: nowrap; }
+
+  #panel, #netpanel { width: 320px; flex: none; overflow-y: auto; padding: 16px; }
+  #panel { border-left: 1px solid var(--rule); }
+  #netpanel { border-right: 1px solid var(--rule); }
+  #netpanel section:first-of-type { margin-top: 12px; }
+  .chip { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; vertical-align: -1px; }
+  .net text { font: 12px var(--mono); fill: var(--ink-2); }
+
+  :is(#panel, #netpanel) h1 { margin: 0; font-size: 16px; font-weight: 650; }
+  :is(#panel, #netpanel) header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .btn { padding: 4px 10px; border: 1px solid var(--ink-2); border-radius: 4px; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+  .btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+  .btn:hover, .btn.armed { background: var(--ink); color: var(--surface); }
+  .btn:focus-visible, #settings summary:focus-visible, #settings input:focus-visible { outline: 2px solid var(--best); outline-offset: 2px; }
+  :is(#panel, #netpanel) h2 { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+  :is(#panel, #netpanel) section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  :is(#panel, #netpanel) p { margin: 0; color: var(--ink-2); }
+  :is(#panel, #netpanel) :is(canvas, svg) { display: block; width: 100%; }
+  #status { min-height: 1.45em; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .tiles span { display: block; }
+  .k { color: var(--ink-2); font-size: 12px; }
+  .statlink { font-size: 16px !important; line-height: 26px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .statlink:hover { color: var(--best); }
+  .n { font: 20px var(--mono); }
+  .legend { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-bottom: 4px !important; font-size: 12px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; margin-right: 5px; vertical-align: middle; background: var(--c); }
+  #f-read { margin-left: auto; font-family: var(--mono); color: var(--ink); }
+  #race { list-style: none; margin: 0; padding: 0; font: 12px var(--mono); }
+  #race li { cursor: default; position: relative; }
+  .save { position: absolute; right: 0; top: 2px; visibility: hidden; padding: 0 6px; border: 1px solid var(--ink-2); border-radius: 3px; background: var(--surface); color: var(--ink); font: 12px var(--mono); cursor: pointer; }
+  #race li:hover .save, .save:focus-visible { visibility: visible; }
+  .save:hover { background: var(--ink); color: var(--surface); }
+  #zoo summary { cursor: pointer; font-weight: 600; }
+  #zoolist { list-style: none; margin: 8px 0 0; padding: 0; font: 12px var(--mono); }
+  #zoolist li { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 4px 0; border-top: 1px solid var(--rule); }
+  #zoolist li.shown b { color: var(--highlight); }
+  #zoolist b { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #zoolist small { color: var(--ink-2); font-size: 12px; }
+  #zoolist .acts { grid-column: 1 / -1; display: flex; gap: 10px; }
+  #zoolist input { font: inherit; width: 100%; }
+  .act { padding: 0; border: 0; background: none; color: var(--ink-2); font: 12px var(--mono); text-decoration: underline; cursor: pointer; }
+  .act:hover, .act:focus-visible { color: var(--ink); }
+  #zoo .btns { margin-top: 8px; }
+  #race li { display: grid; grid-template-columns: 10px 1fr auto; gap: 0 8px; align-items: center; padding: 3px 0; }
+  #race b { font-weight: 600; color: var(--ink); }
+  #race small { font-size: 12px; color: var(--ink-2); }
+  #race small:nth-of-type(1) { grid-column: 2; }
+  #race li > :nth-child(3), #race li > :nth-child(5) { text-align: right; }
+  #race i { width: 10px; height: 10px; border-radius: 2px; background: var(--ink); opacity: var(--o); }
+  .note { margin-top: 6px !important; font-size: 12px; }
+  #geno text { font: 12px var(--mono); fill: var(--ink); text-anchor: middle; }
+  #track { width: 100%; display: block; }
+  #track text { font: 10px var(--mono); fill: var(--ink-2); text-anchor: middle; }
+  #track rect[rx] { fill: var(--ink); stroke: var(--surface); stroke-width: 1.5; }
+
+  @media (max-width: 760px) {
+    body { flex-direction: column; }
+    #panel, #netpanel { width: 100%; height: 45vh; border-left: 0; border-right: 0; border-top: 1px solid var(--rule); }
+    #netpanel { order: 3; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.166.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.0/examples/jsm/",
+    "mujoco": "https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/mujoco.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="helpPop" popover><div id="helpTitle"></div><div id="helpText"></div></div>
+<aside id="netpanel" aria-label="Neural network">
+  <header><h1 data-help="Each limb type has its own small network, and every limb of that type runs a copy. Circles show the live values of the first such limb of the champion. Inputs on the left: its own joint angle, the angle of its parent joint, ground contact, the tilt of the body, the rhythm and a constant bias. Then three neurons, each with a loop to itself, and the target angle on the right. Lines are weights, dark for positive, dashed red for negative, thicker for stronger. The grey dashed line is the rhythm passed straight to the target.">Network</h1></header>
+  <div id="nets"></div>
+</aside>
+<main id="view"><span id="viewhelp" data-help="Drag to orbit the camera, scroll to zoom. Keys: W A S D move the view, R resets it, H shows or hides the panels, Space pauses."></span><button id="ntoggle" type="button" title="Show or hide the network" aria-controls="netpanel" aria-expanded="true">&lsaquo;</button><button id="ptoggle" type="button" title="Show or hide the dashboard" aria-controls="panel" aria-expanded="true">&rsaquo;</button></main>
+<aside id="panel" aria-label="Simulation dashboard">
+  <header><h1>Evolved Creatures</h1><span class="btns"><button id="pause" class="btn" type="button" aria-pressed="false">Pause</button><button id="restart" class="btn" type="button">Restart</button></span></header>
+  <p id="statusline"><span id="status">loading MuJoCo (11 MB) ...</span></p>
+
+  <details id="settings">
+    <summary>Settings</summary>
+    <div id="controls"></div>
+    <p id="estimate" class="note" title="Rough estimate for these settings"></p>
+    <p class="btns"><button id="apply" class="btn" type="button">Apply</button><button id="randomize" class="btn" type="button">Randomize</button><button id="defaults" class="btn" type="button">Defaults</button></p>
+  </details>
+
+  <section class="tiles">
+    <div><span class="k">generation</span><span class="n" id="s-gen">0</span></div>
+    <div><span class="k">generations per minute</span><span class="n" id="s-rate">0</span></div>
+    <div><span class="k" data-help="Fitness of the champion: metres its centre of mass covers in the 6 seconds after settling, times its upright factor, the smallest cosine of its body tilt during the run. A creature that tips over scores 0.">best fitness</span><span class="n" id="s-best">0.00</span></div>
+    <div><span class="k" data-help="Average fitness of all creatures in the latest generation, averaged over the islands.">mean fitness</span><span class="n" id="s-mean">0.00</span></div>
+    <div><span class="k" data-help="Metres the champion covers in 10 seconds, without the upright factor.">champion, m/10s</span><span class="n" id="s-dist">0.00</span></div>
+    <div><span class="k" data-help="Opens the statistics of this run in a new tab: fitness over time, every champion, the islands, body build and pace.">history</span><a class="n statlink" href="stats.html" target="_blank" rel="noopener">statistics</a></div>
+  </section>
+
+  <section>
+    <h2 data-help="Best and mean fitness of every generation. Hover the chart to read a generation. Ticks along the top mark the generations kept as ghosts.">Fitness per generation</h2>
+    <p class="legend"><span><i style="--c: var(--best)"></i>best</span><span><i style="--c: var(--mean)"></i>mean</span><span id="f-read"></span></p>
+    <canvas id="fit" height="120" role="img" aria-label="Best and mean fitness per generation"></canvas>
+  </section>
+
+  <section id="coursesec" hidden>
+    <h2 data-help="The 50 m course seen from above, obstacles in their colours. Dots are where the last 3000 runs ended: grey when time was up or the creature stood still for 10 seconds, red when the creature left the track or passed a pole on the wrong side, violet at the finish. Squares are the creatures on the floor, live: dark the champion, pale its ghosts. The violet line is where the champion's last run ended.">Course</h2>
+    <svg id="track" viewBox="0 0 288 48" role="img" aria-label="Positions of the creatures on the course"></svg>
+  </section>
+
+  <section>
+    <h2 data-help="The champion and its ghosts, with metres per 10 s and fitness. Fitness is the metres of the trial times the smallest cosine of the root limb\'s tilt: 1 if it stayed level, 0 if it flipped over.">On the floor</h2>
+    <ul id="race"></ul>
+  </section>
+
+  <section>
+    <details id="zoo">
+      <summary>Saved <span id="zoocount"></span></summary>
+      <ul id="zoolist"></ul>
+      <p class="btns"><button id="export" class="btn" type="button">Export</button><button id="import" class="btn" type="button">Import</button><input id="importfile" type="file" accept=".json,application/json" hidden></p>
+      <p id="zoomsg" class="note"></p>
+    </details>
+  </section>
+
+  <section>
+    <h2 data-help="A circle is a limb type, an arrow attaches a child limb. Double line: mirrored pair. Dashed: only at the end of a chain. The number says how often a limb type may repeat along a chain.">Genotype</h2>
+    <svg id="geno" viewBox="0 0 288 152" role="img" aria-label="Genotype graph of the champion"></svg>
+  </section>
+
+  <section>
+    <h2 data-help="Target angle (grey) and actual angle (in the limb colour) of every joint over the last 3 s.">Joint angles</h2>
+    <p class="legend"><span><i style="--c: var(--mean)"></i>target</span><span><i style="--c: var(--ink); height: 2px"></i>actual</span></p>
+    <canvas id="osc" role="img" aria-label="Target and actual angle of each joint"></canvas>
+  </section>
+
+</aside>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import loadMujoco from 'mujoco';
+
+const $ = id => document.getElementById(id);
+let mujoco;
+try {
+  // Die Offline-Fassung (scripts/build_offline.py) bettet das WASM ein und reicht es hier durch.
+  // locateFile muss dabei sein: ohne es bildet mujoco.js die WASM-Adresse relativ zur Modul-URL,
+  // und das wirft bei einer Blob-URL, auch wenn das WASM schon da ist.
+  mujoco = await loadMujoco(window.MUJOCO_WASM
+    ? { wasmBinary: window.MUJOCO_WASM, locateFile: file => file }
+    : undefined);
+} catch (e) {
+  $('status').textContent = 'MuJoCo failed to load: ' + e.message;
+  throw e;
+}
+
+// Einstellungen: aus der URL, wenn sie welche nennt (ein geteilter Link), sonst die zuletzt
+// angewandten. Geprüft werden sie im Kern (cleanSettings).
+const SETTINGS_KEY = 'evolvedCreatures.settings';
+const urlParams = new URLSearchParams(location.search);
+const resetRequested = urlParams.has('reset');
+urlParams.delete('reset');
+let SETTINGS_RAW;
+if ([...urlParams.keys()].length) SETTINGS_RAW = Object.fromEntries(urlParams);
+else try { SETTINGS_RAW = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch (e) { /* Standardwerte */ }
+
+//<core> Physik und Evolution, ohne DOM. Der Node-Test schneidet diesen Block aus.
+
+// Einstellbare Werte. Das Dashboard baut daraus die Regler, die URL und der Speicher liefern
+// Rohwerte, cleanSettings macht daraus gültige Zahlen. Ohne SETTINGS_RAW (Node-Test) gelten
+// die Standardwerte.
+const SPEC = [
+  { group: 'Inheritance', key: 'mutations', label: 'Mutations per offspring', help: 'How many random changes each offspring gets. More explores faster, but breaks good creatures more often.', def: 2, min: 0, max: 10, step: 1 },
+  { group: 'Inheritance', key: 'sigma', label: 'Mutation strength', help: 'How far one number in the genome moves when it mutates, such as a limb size or the phase of a joint.', def: 0.2, min: 0.05, max: 0.5, step: 0.05 },
+  { group: 'Inheritance', key: 'struct', label: 'Structural mutations', help: 'Share of mutations that change the body plan: a limb type or a connection is added or removed. The rest tune sizes, angles and rhythm.', def: 0.15, min: 0, max: 0.5, step: 0.05, unit: '%' },
+  { group: 'Inheritance', key: 'cross', label: 'Crossover', help: 'Share of offspring made from two parents: the first limb types come from one, the rest from the other.', def: 0.1, min: 0, max: 0.4, step: 0.05, unit: '%' },
+  { group: 'Inheritance', key: 'graft', label: 'Grafting', help: 'Share of offspring where one connection of a parent is redirected to a limb of a second parent, which brings that part of its body along.', def: 0.3, min: 0, max: 0.4, step: 0.05, unit: '%' },
+  { group: 'Selection', key: 'pop', label: 'Creatures per island', help: 'Creatures evaluated in each generation of an island.', def: 30, min: 10, max: 100, step: 5 },
+  { group: 'Selection', key: 'keep', label: 'Survivors per generation', help: 'The best creatures of a generation survive unchanged, the rest of the next generation descends from them. At most half the population.', def: 6, min: 1, max: 50, step: 1 },
+  { group: 'Selection', key: 'islands', label: 'Islands', help: 'Independent populations that take turns. More islands find more different solutions, each one evolves more slowly.', def: 3, min: 1, max: 6, step: 1 },
+  { group: 'Selection', key: 'reseed', label: 'Island restart', help: 'An island that has not improved for this many of its own generations starts over with random creatures, unless it holds the champion. At the right end: never.', def: 100, min: 50, max: 550, step: 50, unit: 'gen' },
+  { group: 'Body', key: 'maxLimbs', label: 'Max limbs', help: 'Upper limit of body parts, counting the repeats from chains and mirroring.', def: 10, min: 2, max: 16, step: 1 },
+  { group: 'Body', key: 'maxNodes', label: 'Max limb types', help: 'How many different limb types a genome may have. Each type has its own colour.', def: 4, min: 1, max: 4, step: 1 },
+  { group: 'Body', key: 'maxSize', label: 'Max size', help: 'Largest extent of a creature along any axis, as built. A larger one is shrunk as a whole: same body plan, smaller scale, weaker joints. Without a limit, size would always pay off, because joint strength grows with the limbs, and giants would step over the course.', def: 0.6, min: 0.2, max: 2, step: 0.1, unit: 'm' },
+  { group: 'Body', key: 'shapes', label: 'Round shapes', help: 'When on, limb types can also be spheres, capsules, cylinders or ellipsoids, and a rare mutation switches the shape. When off, every limb is a box, as in Sims\' creatures.', def: true },
+  { group: 'Body', key: 'mirror', label: 'Mirrored connections', help: 'Chance that a new connection attaches a mirrored pair of limbs instead of a single one.', def: 0.9, min: 0, max: 1, step: 0.05, unit: '%' },
+  { group: 'Body', key: 'recur', label: 'Max chain length', help: 'How often a limb type may repeat along a chain, as in a tail or a leg with several segments.', def: 3, min: 1, max: 5, step: 1 },
+  { group: 'Body', key: 'hip', label: 'Second joint axis', help: 'When on, a limb type can have a second hinge at its joint, with its own range, amplitude and phase. Two axes out of step let a leg lift, swing forward and set down, instead of only swinging.', def: false },
+  { group: 'Control', key: 'wave', label: 'Asymmetric rhythm', help: 'When on, each limb type has a gene for the shape of its rhythm: a slow stroke one way and a quick one back, instead of an even sine. Walking pushes long and recovers fast, jumping winds up slowly and releases fast.', def: false },
+  { group: 'Control', key: 'net', label: 'Neural network', help: 'When on, every joint also listens to a small network that reads its own angle, its parent\'s angle, ground contact and the tilt of the body. When off, joints only follow their rhythm.', def: false },   // aus: über eine Stunde gemessen läuft die Evolution ohne Netz besser (CLAUDE.md)
+  { group: 'Trial', key: 'jump', label: 'Jump', help: 'When on, creatures jump instead of walk: fitness is the greatest height of their lowest point above the floor, after settling. On the course, each metre of jump height adds 5 m to the progress.', def: false },
+  { group: 'Trial', key: 'course', label: 'Course', help: 'When on, creatures run a fixed 50 m obstacle course: bumps, bars, loose balls, a staircase, tilted wedges and a slalom. Only progress towards the finish counts. Leaving the track or passing a slalom pole on the wrong side ends the run there, and so does making no progress for 10 seconds; reaching the finish adds one metre per second left. When off, creatures run on open ground in any direction.', def: true },
+  { group: 'Trial', key: 'start', label: 'Start', help: 'Where on the course the creatures start, in metres. Progress counts from there. Put them right in front of an obstacle to watch it or to train on it: 17 for the balls, 25 for the staircase, 33 for the wedges, 41 for the slalom.', def: 0, min: 0, max: 45, step: 1, unit: 'm' },
+  { group: 'Trial', key: 'trial', label: 'Trial length', help: 'Seconds of movement that count for fitness, after two seconds of settling. With the course, a run lasts ten times as long.', def: 6, min: 3, max: 15, step: 1, unit: 's' },
+  { group: 'Trial', key: 'upright', label: 'Tumbling scores zero', help: 'When on, a creature that flips its root limb over scores zero, so walking wins over rolling.', def: true },
+];
+const NEVER = 550;   // reseed am Anschlag heisst: nie neu beginnen
+
+// Rohwerte kommen auch aus der URL, also nie ungeprüft übernehmen: Zahl erzwingen, auf den
+// Bereich begrenzen, auf die Schrittweite runden. Unbekannte Schlüssel fallen weg.
+function cleanSettings(raw) {
+  const s = {};
+  for (const o of SPEC) {
+    const v = raw?.[o.key];
+    if (typeof o.def === 'boolean') { s[o.key] = v === undefined ? o.def : !(v === false || v === 0 || v === '0' || v === 'false'); continue; }
+    const n = v === 'never' ? o.max : Number(v);
+    s[o.key] = v === undefined || v === '' || !Number.isFinite(n) ? o.def
+      : +(o.min + Math.round((Math.min(o.max, Math.max(o.min, n)) - o.min) / o.step) * o.step).toFixed(4);
+  }
+  s.keep = Math.min(s.keep, Math.floor(s.pop / 2));
+  // Mit nur einer Gliedsorte entsteht ein Kind nur über die Selbstverbindung der Wurzel; die braucht
+  // eine Kette von mindestens 2, sonst bleibt die Kreatur ein einzelner Quader ohne Gelenk.
+  if (s.maxNodes === 1) s.recur = Math.max(s.recur, 2);
+  return s;
+}
+const S = cleanSettings(typeof SETTINGS_RAW === 'undefined' ? {} : SETTINGS_RAW);
+const DT = 0.005;      // Timestep in s
+const SETTLE = 2;      // s ohne Wertung, damit Umfallen keine Strecke zählt. Bewegen darf sich die
+                       // Kreatur schon: wer in dieser Zeit Schwung holt, nimmt ihn in die Messung mit.
+const TRIAL = S.course ? 10 * S.trial : S.trial;   // s gewertete Strecke; der Parcours braucht mehr Zeit
+const N0 = Math.round(SETTLE / DT), N = N0 + Math.round(TRIAL / DT);
+const POP = S.pop, KEEP = S.keep, MUTATIONS = S.mutations, SIGMA = S.sigma;
+const MAX_NODES = S.maxNodes, MAX_CONNS = 6, MAX_LIMBS = S.maxLimbs;
+const GHOST_EVERY = 100, GHOSTS = 3;   // alle 100 Generationen ein Champion ins Archiv, 3 bleiben
+const STALE = 50, KICK = 10;           // nach 50 Generationen ohne Fortschritt 10 Generationen Schub
+const ISLANDS = S.islands;             // unabhängige Populationen
+const RESEED = S.reseed >= NEVER ? Infinity : S.reseed;   // Neustart einer Insel nach so vielen eigenen Generationen Stillstand
+
+const rnd = n => Math.floor(Math.random() * n);
+const pick = a => a[rnd(a.length)];
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp01 = v => Math.min(1, Math.max(0, v));
+const noise = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2 * SIGMA;
+const genes = n => Array.from({ length: n }, Math.random);
+
+// Genotyp nach Sims: gerichteter Graph. Ein Knoten beschreibt ein Glied (Quader plus Gelenk
+// zum Elternglied), eine Verbindung hängt ein Kindglied an. Alle v-Gene liegen in [0,1].
+//   Genom.v = [Frequenz]
+//   Knoten.v = [Länge, Breite, Höhe, Gelenkbereich, Amplitude], axis 0..2, recur 1..3
+//   Verbindung.v = [Versatz entlang des Elternglieds, Yaw, Pitch, Skalierung, Phase, Phasenversatz des
+//     gespiegelten Kinds in Perioden], mirror: zweites Kind gespiegelt an der xz-Ebene,
+//     terminal: nur am Ende einer rekursiven Kette. Der Phasenversatz war früher der Schalter `anti`
+//     (0 oder eine halbe Periode); als Gen kann er jeden Wert annehmen.
+// Zweite Gelenkachse (S.hip): Knoten.hip 0 keine, 1 oder 2 eine der beiden anderen Achsen, dazu
+//   Knoten.hv = [Gelenkbereich, Amplitude, Phasenversatz zur ersten Achse in Perioden].
+// Wellenform (S.wave): Knoten.sk = [Anteil der Periode, in dem der Sollwinkel steigt]; 0,5 ist der Sinus.
+// Beide Felder fehlen in Genomen, die ohne den Schalter entstanden: dann eine Achse und Sinus.
+// Netz pro Gliedsorte, wie Sims' lokale Neuronen: jedes Glied dieser Sorte bekommt eine Kopie.
+// NI Eingänge (eigener Winkel, Winkel des Elternglieds, Bodenkontakt, Neigung der Wurzel, Rhythmus,
+// Bias), NH Neuronen mit tanh und Rückkopplung auf sich selbst, ein Ausgang, der zum Rhythmus
+// addiert wird. w = [W (NH x NI), U (NH), V (NH)] als Gene in [0,1], Gewicht = 4 g - 2.
+// V startet bei 0,5, also Gewicht 0: ein neues Netz reicht genau den Rhythmus durch.
+const NI = 6, NH = 3, NW = NH * NI + 2 * NH;
+const WEIGHT_SHARE = 0.2;   // Anteil der Zahlen-Mutationen, der die Netzgewichte trifft
+const INPUTS = ['angle', 'parent', 'contact', 'tilt', 'rhythm', 'bias'];
+const newWeights = () => [...genes(NH * NI + NH), ...Array(NH).fill(0.5)];
+// Form einer Gliedsorte: 0 Quader, 1 Kugel, 2 Kapsel, 3 Zylinder, 4 Ellipsoid. Ohne S.shapes nur Quader.
+// Fehlt das Feld (ältere Genome), ist es ein Quader.
+const SHAPES = ['box', 'sphere', 'capsule', 'cylinder', 'ellipsoid'];
+const newNode = () => ({ v: genes(5), w: newWeights(), axis: rnd(3), recur: 1 + rnd(S.recur), shape: S.shapes ? rnd(SHAPES.length) : 0, conns: [],
+  ...(S.hip ? { hip: rnd(3), hv: genes(3) } : {}), ...(S.wave ? { sk: genes(1) } : {}) });   // ohne die Schalter kein zusätzlicher Zufall
+// Der Phasenversatz startet wie früher bei 0 (gleichzeitig) oder 0,5 (abwechselnd); Mutationen verschieben ihn.
+const newConn = to => ({ to, v: [...genes(5), Math.random() < 0.5 ? 0.5 : 0], mirror: Math.random() < S.mirror, terminal: false });
+
+// Eine Mutation. Strukturänderungen (Anteil S.struct, Standard 15 %) sind selten, weil Körper
+// und Steuerung sonst nie zueinander finden. Der Rest teilt sich 70:15 in Zahlenwerte und Schalter;
+// die Strukturänderungen 7:4:4 in Verbindung hinzu, Verbindung weg, Knoten hinzu.
+function mutate(G) {
+  const g = structuredClone(G), nodes = g.nodes, conns = nodes.flatMap(n => n.conns), r = Math.random();
+  const q = 1 - S.struct, p = S.struct / 15;
+  // Genome aus einem Lauf ohne den Schalter (seed, Import) bekommen die fehlenden Gene hier.
+  for (const n of nodes) { if (S.hip && !n.hv) n.hv = genes(3); if (S.wave && !n.sk) n.sk = [0.5]; }
+  if (r < q * 0.7 / 0.85) {
+    // Mit Netz trifft ein fester Anteil der Zahlen-Mutationen die Gewichte, der Rest Körper und
+    // Rhythmus wie ohne Netz. Gleichmässig über alle Gene verteilt (24 Gewichte pro Gliedsorte)
+    // fehlten diese Mutationen bei der Feinarbeit am Körper; gemessen am 12. November 2026.
+    const a = S.net && Math.random() < WEIGHT_SHARE ? pick(nodes).w : pick([g.v, ...nodes.flatMap(n => [n.v, ...(S.hip ? [n.hv] : []), ...(S.wave ? [n.sk] : [])]), ...conns.map(c => c.v)]), i = rnd(a.length);
+    a[i] = clamp01(a[i] + noise());
+  } else if (r < q) {
+    const o = pick([...nodes, ...conns]);
+    if (o.conns) {
+      if (S.shapes && Math.random() < 0.2) o.shape = rnd(SHAPES.length);   // Zusatzwurf nur mit Formen, sonst bleibt der Zufall wie bisher
+      else if (S.hip && Math.random() < 0.3) o.hip = rnd(3);                // ebenso
+      else if (Math.random() < 0.5) o.axis = rnd(3); else o.recur = 1 + rnd(S.recur);
+    }
+    else {
+      // 'anti' verschiebt den Phasenversatz um eine halbe Periode, wie früher das Umlegen des Schalters.
+      const k = pick(['mirror', 'anti', 'terminal', 'to']);
+      if (k === 'to') o.to = rnd(nodes.length); else if (k === 'anti') o.v[5] = (o.v[5] + 0.5) % 1; else o[k] = !o[k];
+    }
+  } else if (r < q + 7 * p) {
+    if (conns.length < MAX_CONNS) pick(nodes).conns.push(newConn(rnd(nodes.length)));
+  } else if (r < q + 11 * p) {
+    if (conns.length > 1) { const n = pick(nodes.filter(n => n.conns.length)); n.conns.splice(rnd(n.conns.length), 1); }
+  } else if (nodes.length < MAX_NODES && conns.length < MAX_CONNS) {
+    nodes.push(newNode());
+    pick(nodes.slice(0, -1)).conns.push(newConn(nodes.length - 1));
+  }
+  return g;
+}
+
+// Räumt nach Crossover und Grafting auf: nur von der Wurzel erreichbare Knoten bleiben,
+// höchstens MAX_NODES und MAX_CONNS, Verbindungen werden auf die neuen Indizes umgeschrieben.
+// Ein Genom aus fremder Quelle (Import-Datei) prüfen und als saubere Kopie zurückgeben, nur mit
+// den bekannten Feldern. Ungültig: null.
+function importGenome(g) {
+  const genes = (a, n) => Array.isArray(a) && a.length === n && a.every(x => typeof x === 'number' && x >= 0 && x <= 1);
+  if (!g || !genes(g.v, 1) || !Array.isArray(g.nodes) || g.nodes.length < 1 || g.nodes.length > 4) return null;
+  let total = 0;
+  const nodes = [];
+  for (const n of g.nodes) {
+    if (!n || !genes(n.v, 5) || !genes(n.w, NW) || ![0, 1, 2].includes(n.axis) || !Number.isInteger(n.recur) || n.recur < 1 || n.recur > 5 || !Array.isArray(n.conns)
+        || (n.shape !== undefined && !(Number.isInteger(n.shape) && n.shape >= 0 && n.shape < SHAPES.length))
+        || (n.hip !== undefined && ![0, 1, 2].includes(n.hip)) || (n.hv !== undefined && !genes(n.hv, 3)) || (n.sk !== undefined && !genes(n.sk, 1))) return null;
+    const conns = [];
+    for (const c of n.conns) {
+      // Ältere Genome: fünf Gene und der Schalter anti. Daraus wird der Phasenversatz 0 oder 0,5.
+      const old = c && genes(c.v, 5) && typeof c.anti === 'boolean';
+      if (!c || !(old || genes(c.v, 6)) || !Number.isInteger(c.to) || c.to < 0 || c.to >= g.nodes.length
+          || typeof c.mirror !== 'boolean' || typeof c.terminal !== 'boolean') return null;
+      conns.push({ to: c.to, v: old ? [...c.v, c.anti ? 0.5 : 0] : [...c.v], mirror: c.mirror, terminal: c.terminal });
+    }
+    total += conns.length;
+    nodes.push({ v: [...n.v], w: [...n.w], axis: n.axis, recur: n.recur, shape: n.shape ?? 0, conns,
+      ...(n.hip !== undefined && { hip: n.hip }), ...(n.hv && { hv: [...n.hv] }), ...(n.sk && { sk: [...n.sk] }) });
+  }
+  return total <= MAX_CONNS ? { v: [...g.v], nodes } : null;
+}
+
+// Eine Kreatur in den laufenden Lauf einsetzen: auf jeder Insel anstelle der letzten Kreatur der
+// Population. Sie wird in dieser Generation neu bewertet und muss sich gegen die anderen behaupten.
+// tidy kürzt sie auf die aktuellen Grenzen, falls sie unter anderen Einstellungen entstand.
+function seedGenome(g) {
+  for (const isl of islands) isl.pop[POP - 1] = { g: tidy(structuredClone(g)) };
+  events.push({ gen: generation, type: 'seed', name: nameOf(g) });
+}
+
+function tidy(g) {
+  const keep = [0];
+  for (let i = 0; i < keep.length; i++) for (const c of g.nodes[keep[i]].conns) if (!keep.includes(c.to)) keep.push(c.to);
+  keep.length = Math.min(keep.length, MAX_NODES);
+  let budget = MAX_CONNS;
+  g.nodes = keep.map(i => g.nodes[i]);
+  for (const n of g.nodes) n.conns = n.conns.filter(c => keep.includes(c.to) && budget-- > 0).map(c => ({ ...c, to: keep.indexOf(c.to) }));
+  return g;
+}
+
+// Crossover nach Sims: Knoten beider Eltern in einer Reihe, bis zum Schnittpunkt von A, danach von B.
+// Verbindungen, die ins Leere zeigen, bekommen ein zufälliges Ziel.
+function crossover(A, B) {
+  const a = structuredClone(A), b = structuredClone(B), k = 1 + rnd(Math.min(a.nodes.length, b.nodes.length));
+  a.nodes = a.nodes.slice(0, k).concat(b.nodes.slice(k));
+  for (const n of a.nodes) for (const c of n.conns) if (c.to >= a.nodes.length) c.to = rnd(a.nodes.length);
+  return tidy(a);
+}
+
+// Grafting nach Sims: eine Verbindung von A zeigt neu auf einen Knoten von B, dessen Teilgraph kommt mit.
+function graft(A, B) {
+  const a = structuredClone(A), b = structuredClone(B), off = a.nodes.length;
+  const conns = a.nodes.flatMap(n => n.conns);
+  if (!conns.length) return a;
+  for (const n of b.nodes) for (const c of n.conns) c.to += off;
+  pick(conns).to = off + rnd(b.nodes.length);
+  a.nodes.push(...b.nodes);
+  return tidy(a);
+}
+
+function randomGenome() {
+  // Bei nur einer Gliedsorte zeigt die erste Verbindung auf die Wurzel selbst.
+  let g = { v: genes(1), nodes: MAX_NODES > 1 ? [newNode(), newNode()] : [newNode()] };
+  g.nodes[0].conns.push(newConn(MAX_NODES > 1 ? 1 : 0));
+  for (let i = 0; i < 3; i++) g = mutate(g);
+  for (const n of g.nodes) n.w.fill(0.5, NH * NI + NH);   // Ausgang auf 0: ein neues Netz reicht den Rhythmus durch
+  return g;
+}
+
+// Genotyp zu Phänotyp: Graph ab Knoten 0 in der Breite ablaufen. count zählt pro Pfad, wie oft
+// ein Knoten schon vorkam; recur begrenzt das, so entstehen Ketten aus Selbstverbindungen.
+function grow(G) {
+  const root = { n: 0, scale: 1, sign: 1, phase: 0, count: { 0: 1 }, kids: [] };
+  const queue = [root];
+  let limbs = 1;
+  while (queue.length) {
+    const p = queue.shift(), pn = G.nodes[p.n];
+    for (const c of pn.conns) {
+      const seen = p.count[c.to] || 0;
+      if (seen >= G.nodes[c.to].recur) continue;
+      if (c.terminal && p.count[p.n] < pn.recur) continue;
+      for (const s of c.mirror ? [1, -1] : [1]) {
+        if (limbs++ >= MAX_LIMBS) return root;
+        const kid = {
+          n: c.to, c, scale: p.scale * lerp(0.6, 1.1, c.v[3]), sign: p.sign * s,
+          phase: p.phase + c.v[4] + (s < 0 ? c.v[5] : 0),
+          count: { ...p.count, [c.to]: seen + 1 }, kids: [],
+        };
+        p.kids.push(kid); queue.push(kid);
+      }
+    }
+  }
+  return root;
+}
+
+const f3 = a => a.map(v => v.toFixed(4)).join(' ');
+
+// Ein Glied als MJCF. Der Quader liegt entlang lokal +x, das Gelenk sitzt am Ursprung;
+// beim Wurzelglied liegt der Quader mittig. parent = [Mitte x, halbe Grössen] des Elternglieds.
+// out.nodes und out.joints füllen sich in Dokumentreihenfolge, also so, wie MuJoCo Geoms
+// und Gelenke nummeriert: Geom i+1 gehört zu out.nodes[i], Gelenk i liegt in qpos[7 + i].
+// Wie weit ein Geom unter seinen Mittelpunkt reicht. z: z-Anteile seiner drei lokalen Achsen (dritte Zeile
+// von geom_xmat), s: geom_size. Typnummern aus mjtGeom: 2 Kugel, 3 Kapsel, 4 Ellipsoid, 5 Zylinder, 6 Quader.
+function lowest(type, s, z) {
+  if (type === 2) return s[0];
+  if (type === 3) return Math.abs(z[2]) * s[1] + s[0];
+  if (type === 4) return Math.hypot(z[0] * s[0], z[1] * s[1], z[2] * s[2]);
+  if (type === 5) return Math.abs(z[2]) * s[1] + s[0] * Math.sqrt(Math.max(0, 1 - z[2] * z[2]));
+  return Math.abs(z[0]) * s[0] + Math.abs(z[1]) * s[1] + Math.abs(z[2]) * s[2];
+}
+
+function limbXML(G, L, out, parent, pj = -1) {
+  const node = G.nodes[L.n];
+  const h = [lerp(0.08, 0.3, node.v[0]), lerp(0.04, 0.2, node.v[1]), lerp(0.04, 0.2, node.v[2])].map(v => v * L.scale * out.k);   // out.k: Massstab der ganzen Kreatur, siehe hatch
+  // Ausdehnung e (Halbachsen) und Geom je nach Form. Die Gene bleiben dieselben drei Grössen.
+  const shape = node.shape ?? 0, rad = (h[1] + h[2]) / 2;
+  const e = shape === 0 || shape === 4 ? h : shape === 1 ? Array(3).fill((h[0] + h[1] + h[2]) / 3) : [Math.max(h[0], rad + 0.01 * out.k), rad, rad];
+  const cx = parent ? e[0] : 0;
+  out.nodes.push(L.n);
+  const range = lerp(0.3, 1.3, node.v[3]);
+  const force = Math.max(2, 3200 * h[1] * h[2]);                      // Kraft wächst mit dem Querschnitt
+  const j = out.joints.length;
+  // pj: Gelenk des Elternglieds (-1 an der Wurzel), geom: Index des eigenen Quaders.
+  // duty: Anteil der Periode, in dem der Sollwinkel steigt (nur mit Gen sk, sonst Sinus).
+  const duty = node.sk && lerp(0.15, 0.85, node.sk[0]), w = Float64Array.from(node.w, g => 4 * g - 2);
+  if (parent) out.joints.push({ range, amp: node.v[4], phase: L.phase, force, node: L.n, pj, geom: out.nodes.length, w, duty });
+  // Zweite Achse am selben Gelenkpunkt: ein weiteres Gelenk desselben Glieds, gleich nach dem ersten.
+  // So bleibt Gelenk i in qpos[7 + i]; Netz, Anzeige und Aktuatoren behandeln es wie jedes andere.
+  const hip = parent && node.hip && node.hv ? node.hip : 0, range2 = hip && lerp(0.3, 1.3, node.hv[0]);
+  if (hip) out.joints.push({ range: range2, amp: node.hv[1], phase: L.phase + node.hv[2], force, node: L.n, pj, geom: out.nodes.length, w, duty });
+  const kids = L.kids.map(k => limbXML(G, k, out, [cx, e, shape !== 0], parent ? j : -1)).join('');
+  // Kapsel und Zylinder liegen entlang der Gliedachse (fromto), MuJoCo legt ihre Achse dann auf lokal z.
+  const half = shape === 2 ? e[0] - rad : e[0], ends = `fromto="${(cx - half).toFixed(4)} 0 0 ${(cx + half).toFixed(4)} 0 0"`;
+  const geom = shape === 0 ? `<geom type="box" size="${f3(e)}" pos="${cx.toFixed(4)} 0 0"/>`
+    : shape === 1 ? `<geom type="sphere" size="${e[0].toFixed(4)}" pos="${cx.toFixed(4)} 0 0"/>`
+    : shape === 4 ? `<geom type="ellipsoid" size="${f3(e)}" pos="${cx.toFixed(4)} 0 0"/>`
+    : `<geom type="${shape === 2 ? 'capsule' : 'cylinder'}" size="${rad.toFixed(4)}" ${ends}/>`;
+  if (!parent) return `<body><freejoint/>${geom}${kids}</body>`;
+
+  const c = L.c, s = L.sign;
+  const yaw = s * lerp(-Math.PI, Math.PI, c.v[1]), pitch = lerp(-Math.PI / 2, Math.PI / 2, c.v[2]);
+  const c1 = Math.cos(yaw / 2), s1 = Math.sin(yaw / 2), c2 = Math.cos(pitch / 2), s2 = Math.sin(pitch / 2);
+  const quat = [c1 * c2, -s1 * s2, c1 * s2, s1 * c2];                 // Rz(yaw) * Ry(pitch)
+  // Ansatz an der Oberfläche des Elternglieds, wie bei Sims: Yaw und Pitch geben eine Richtung d,
+  // das Kind zeigt entlang d nach aussen. Der Strahl startet auf der Längsachse des Elternglieds
+  // (Gen 0 verschiebt ihn entlang der Achse) und der Ansatzpunkt ist dort, wo er den Quader verlässt.
+  // So stehen Glieder vom Körper ab, statt in ihm zu stecken.
+  const d = [Math.cos(yaw) * Math.cos(pitch), Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch)];
+  // Bei runden Elterngliedern trifft der Strahl das eingeschriebene Ellipsoid: exakt bei Kugel und
+  // Ellipsoid, bei Kapsel und Zylinder wenige Millimeter innerhalb der Oberfläche.
+  const [pcx, ph, round] = parent, o = [(c.v[0] * 2 - 1) * 0.8 * ph[0], 0, 0];
+  let t;
+  if (round) {
+    const qa = d.reduce((a, di, i) => a + (di / ph[i]) ** 2, 0), qb = 2 * d.reduce((a, di, i) => a + o[i] * di / ph[i] ** 2, 0);
+    const qc = o.reduce((a, oi, i) => a + (oi / ph[i]) ** 2, 0) - 1;
+    t = (-qb + Math.sqrt(qb * qb - 4 * qa * qc)) / (2 * qa);
+  } else t = Math.min(...d.map((di, i) => Math.abs(di) < 1e-9 ? Infinity : (ph[i] - Math.sign(di) * o[i]) / Math.abs(di)));
+  const pos = [pcx + o[0] + d[0] * t, d[1] * t, d[2] * t];
+  // Spiegelung an der xz-Ebene: Yaw kehrt um, die Drehachse a wird zu (-ax, ay, -az).
+  const axis = a => { const v = [0, 0, 0]; v[a] = a === 1 ? 1 : s; return v.join(' '); };
+  return `<body pos="${f3(pos)}" quat="${f3(quat)}">
+    <joint name="j${j}" axis="${axis(node.axis)}" range="${-range} ${range}" damping="${force / 20}"/>${hip ? `
+    <joint name="j${j + 1}" axis="${axis((node.axis + hip) % 3)}" range="${-range2} ${range2}" damping="${force / 20}"/>` : ''}${geom}${kids}</body>`;
+}
+
+//<course>
+// Parcours entlang +x, Start bei x = 0, Bahn von y = -3 bis 3, z oben, Meter. Reine Daten, kein DOM:
+// index.html baut daraus die MuJoCo-Geoms und die Anzeige, course.html nur die Anzeige. Der Block steht
+// in beiden Dateien gleich.
+// Teile: { box: [x0, x1, y0, y1, z0, z1] } wird ein Quader, { pole: [x, y, r, h] } ein Zylinder,
+// { ball: [x, y, r, Dichte, schwer] } eine lose Kugel, { tilt: [x0, x1, side, h] } ein seitlich geneigter Keil, { verts } allein ein Prisma mit Profil in x-z.
+// Keil und Prisma sind konvexe Körper (MuJoCo-Mesh). Jedes Teil hat verts.
+const COURSE = (() => {
+  const W = 3, GAP = 4, LEAD = 3;   // halbe Bahnbreite, freie Bahn zwischen Hindernissen, Anlauf und Auslauf
+  const LAP = 0.5;   // so weit reicht die Treppe über die Bahnmitte: wer genau geradeaus läuft, trifft Stufen, nicht die Naht zum Block
+  const boxVerts = ([x0, x1, y0, y1, z0, z1]) => [[x0, y0, z0], [x1, y0, z0], [x0, y1, z0], [x1, y1, z0], [x0, y0, z1], [x1, y0, z1], [x0, y1, z1], [x1, y1, z1]];
+  const box = (...b) => ({ box: b, verts: boxVerts(b) });
+  const prism = profile => ({ verts: profile.flatMap(([x, z]) => [[x, -W, z], [x, W, z]]) });   // Profil in x-z über die ganze Breite
+  const stairs = (x0, n, run, rise, y0, y1, down) => Array.from({ length: n }, (_, i) =>
+    box(x0 + i * run, x0 + (i + 1) * run, y0, y1, 0, (down ? n - i : i + 1) * rise));
+  const tilt = (x0, x1, side, h) => ({ tilt: [x0, x1, side, h], verts: [x0, x1].flatMap(x => [[x, -W, 0], [x, W, 0], [x, side * W, h]]) });   // side +1: links hoch
+  const ball = (x, y, r, density, heavy) => ({ ball: [x, y, r, density, heavy], verts: boxVerts([x - r, x + r, y - r, y + r, 0, 2 * r]) });
+  const pole = (x, y, r, h) => ({ pole: [x, y, r, h], verts: boxVerts([x - r, x + r, y - r, y + r, 0, h]) });
+  const slalom = [];   // Seite je Stange: +1 links (y > 0). Falsche Seite beendet den Lauf an dieser Stange.
+  // Masse in runden Zahlen: Stufen 5 cm hoch, Längen auf 10 cm. Mit LEAD und GAP ergibt das genau 50 m.
+  const OBSTACLES = [
+    // 1. Zwei flache Buckel über die ganze Breite, je 2 m lang und 15 cm hoch.
+    { name: 'Bumps', len: 4, build: x => [0, 2].map(d => prism([[x + d, 0], [x + d + 0.4, 0.1], [x + d + 1, 0.15], [x + d + 1.6, 0.1], [x + d + 2, 0]])) },
+    // 2. Zwei tiefe Leisten zum Überspringen, 10 cm hoch, 1 m auseinander. Massiv, sonst kriechen kleine Kreaturen darunter durch.
+    { name: 'Bars', len: 1.2, build: x => [0.1, 1.1].map(c => prism([[x + c - 0.1, 0], [x + c, 0.1], [x + c + 0.1, 0]])) },
+    // 3. 48 lose Kugeln als Band quer über die ganze Bahn, 4 m lang, in der Mitte der 6 m dieses Abschnitts:
+    //    zwölf Spalten im Abstand von 50 cm, je vier Kugeln im Abstand von 80 cm, im Zickzack versetzt. Radius 10, 15
+    //    oder 20 cm, leicht oder schwer: 0,4 und 3,8 kg, 1,3 und 13 kg, die grossen 60 und 240 kg. Aussen herum
+    //    geht es nicht.
+    { name: 'Balls', len: 6, build: x => Array.from({ length: 12 }, (_, c) => [0, 1, 2, 3].map(k => {
+      const r = [0.1, 0.15, 0.2][(c + k) % 3], heavy = (c + k) % 2;
+      return ball(x + 3 + (c % 2 ? -1 : -1.4) + k * 0.8, c * 0.5 - 2.75, r, r < 0.2 ? (heavy ? 900 : 90) : heavy ? 7200 : 1800, heavy);
+    })).flat() },
+    // 4. Links 6 Stufen à 20 cm und 5 cm hinauf auf 30 cm, Plattform 1,4 m, rechts 6 Stufen hinunter.
+    //    Beide Treppen reichen 50 cm über die Mitte, der Rest daneben ist Block mit Wand.
+    { name: 'Staircase', len: 3.8, build: x => [...stairs(x, 6, 0.2, 0.05, -LAP, W, false), box(x, x + 1.2, -W, -LAP, 0, 0.3),
+      box(x + 1.2, x + 2.6, -W, W, 0, 0.3), ...stairs(x + 2.6, 6, 0.2, 0.05, -W, LAP, true), box(x + 2.6, x + 3.8, LAP, W, 0, 0.3)] },
+    // 5. Vier Keile hintereinander, je 1 m lang, seitlich geneigt über die ganze Breite: abwechselnd links und
+    //    rechts 30 cm hoch, an der anderen Seite 0. In der Bahnmitte sind alle 15 cm hoch: dort eine Stufe am
+    //    Anfang und am Ende, dazwischen wechselt nur die Neigung.
+    { name: 'Wedges', len: 4, build: x => [0, 1, 2, 3].map(i => tilt(x + i, x + i + 1, i % 2 ? -1 : 1, 0.3)) },
+    // 6. Fünf Slalomstangen, 1,25 m auseinander, 2,5 cm Radius, 50 cm hoch.
+    { name: 'Slalom', len: 5, build: x0 => [0, 1, 2, 3, 4].map(i => {
+      slalom.push({ x: x0 + i * 1.25, side: i % 2 ? -1 : 1 });
+      return pole(x0 + i * 1.25, 0, 0.025, 0.5);
+    }) },
+  ];
+  let x = LEAD;
+  const legs = OBSTACLES.map(o => { const leg = { name: o.name, x0: x, x1: x + o.len, parts: o.build(x) }; x += o.len + GAP; return leg; });
+  return { W, legs, slalom, start: 0, finish: legs.at(-1).x1 + LEAD };   // 3 + 24 + 5 · 4 + 3 = 50 m
+})();
+//</course>
+
+// Höhe der Lauffläche unter (x, y) für den Kontakt-Eingang des Netzes: Quader und Prismen des Parcours,
+// Stangen und Kugeln zählen nicht. Prismen als oberer Rand ihres Profils.
+const GROUND = S.course ? COURSE.legs.flatMap(l => l.parts).filter(p => !p.pole && !p.ball).map(p => p.box
+  ? { x0: p.box[0], x1: p.box[1], y0: p.box[2], y1: p.box[3], z: p.box[5] }
+  : p.tilt ? { x0: p.tilt[0], x1: p.tilt[1], y0: -COURSE.W, y1: COURSE.W, side: p.tilt[2], h: p.tilt[3] }
+  : { x0: Math.min(...p.verts.map(v => v[0])), x1: Math.max(...p.verts.map(v => v[0])), y0: -COURSE.W, y1: COURSE.W,
+      profile: p.verts.filter((v, i) => i % 2 === 0).map(([x, , z]) => [x, z]) }) : [];
+function groundAt(x, y) {
+  let top = 0;
+  for (const g of GROUND) {
+    if (x < g.x0 || x > g.x1 || y < g.y0 || y > g.y1) continue;
+    if (g.side) { top = Math.max(top, g.h * (1 + g.side * y / COURSE.W) / 2); continue; }
+    if (!g.profile) { top = Math.max(top, g.z); continue; }
+    const P = g.profile;
+    for (let i = 0; i < P.length; i++) {
+      const [ax, az] = P[i], [bx, bz] = P[(i + 1) % P.length];
+      if (ax !== bx && x >= Math.min(ax, bx) && x <= Math.max(ax, bx)) top = Math.max(top, az + (bz - az) * (x - ax) / (bx - ax));
+    }
+  }
+  return top;
+}
+
+// Der Parcours als fester Körper nach der Kreatur. So behalten Geoms und Körper der Kreatur ihre Nummern
+// (Geom 0 Boden, Geom i+1 Glied i, Körper 1 Wurzel). Er kollidiert wie der Boden nur mit den Gliedern.
+const COURSE_XML = (() => {
+  const n = v => v.map(f => +f.toFixed(4)).join(' '), assets = [], geoms = [], balls = [], legOf = [];
+  COURSE.legs.forEach((leg, li) => leg.parts.forEach((p, pi) => {
+    if (!p.ball) legOf.push(li);
+    if (p.ball) balls.push(p.ball);
+    else if (p.box) {
+      const [x0, x1, y0, y1, z0, z1] = p.box;
+      geoms.push(`type="box" pos="${n([(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2])}" size="${n([(x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2])}"`);
+    } else if (p.pole) geoms.push(`type="cylinder" pos="${n([p.pole[0], p.pole[1], p.pole[3] / 2])}" size="${n([p.pole[2], p.pole[3] / 2])}"`);
+    else { assets.push(`<mesh name="c${li}_${pi}" vertex="${n(p.verts.flat())}"/>`); geoms.push(`type="mesh" mesh="c${li}_${pi}"`); }
+  }));
+  // Kugeln: eigene Körper nach dem Parcours, jede nur mit zwei Schiebegelenken (x, y). Frei rollende Kugeln lägen
+  // dauernd auf dem Boden auf, und diese Kontakte kosten in jedem Schritt: 12 Stück machten eine Bewertung vier- bis
+  // sechsmal so teuer, so waren es 35 % mehr. Die Dämpfung (1 · Masse) lässt sie ausrollen; schwer zu bewegen sind sie durch ihre Masse. Sie stossen an Kreatur,
+  // andere Kugeln (contype 2, conaffinity 3) und an die Hindernisse (deren conaffinity 3 deckt Bit 2 ab), aber
+  // nicht an den Boden (conaffinity 1): sonst hätte jede Kugel wieder einen dauernden Bodenkontakt.
+  const slide = (axis, d) => `<joint type="slide" axis="${axis}" limited="false" armature="0" damping="${d}"/>`;
+  const ballXML = balls.map(([x, y, r, rho]) => {
+    const d = +(4 / 3 * Math.PI * r ** 3 * rho).toFixed(3);   // 1 · Masse
+    return `<body pos="${n([x, y, r])}">${slide('1 0 0', d)}${slide('0 1 0', d)}<geom type="sphere" size="${r}" density="${rho}" contype="2" conaffinity="3"/></body>`;
+  }).join('');
+  // ballGeom: so viele feste Geoms liegen zwischen den Gliedern und den Kugeln (Geom der Kugel k: limbs + 1 + ballGeom + k).
+  // ballsFrom: ab dieser Weite der Kreatur kommen die Kugeln ins Modell (2 m vor der ersten), siehe addBalls.
+  return { assets: `<asset>${assets.join('')}</asset>`, balls, ballGeom: geoms.length, ballXML,
+    ballsFrom: Math.min(Infinity, ...balls.map(([x, , r]) => x - r)) - 2,
+    // Ein fester Körper pro Hindernis, nicht einer für alle: MuJoCo sortiert Paare zuerst nach den Hüllen der
+    // Körper aus. Mit einem einzigen Körper von 50 m Länge prüfte jeder Schritt jedes Glied und jede Kugel gegen
+    // alle Teile des Parcours.
+    body: COURSE.legs.map((leg, li) => `<body>${geoms.filter((g, i) => legOf[i] === li).map(g => `<geom ${g} contype="0" conaffinity="3"/>`).join('')}</body>`).join('') };
+})();
+
+// Baut eine Kreatur: MJCF erzeugen, kompilieren, Starthöhe so setzen, dass nichts im Boden steckt.
+// Glieder kollidieren nur mit dem Boden (contype/conaffinity).
+// ponytail: keine Selbstkollision. Glieder können sich durchdringen; dafür gibt es keine
+// Explosionen bei überlappenden Geschwistern und keinen Quetsch-Exploit.
+// Grössenlimit: Ist die grösste Ausdehnung über S.maxSize, wird die Kreatur mit kleinerem Massstab k neu
+// gebaut. Alle Längen in limbXML hängen linear an den Gliedgrössen, also wird sie exakt S.maxSize gross.
+// ponytail: kompiliert zu grosse Kreaturen zweimal; die Ausdehnung vorab aus dem MJCF zu rechnen wäre mehr Code.
+function hatch(G, net = S.net) {
+  const tree = grow(G);
+  // Kugeln von Anfang an nur, wenn die Kreatur schon nahe bei ihnen startet (Einstellung «Start»).
+  const early = S.course && S.start >= COURSE_XML.ballsFrom - 1;
+  let built = build(G, tree, 1, false);
+  const size = extent(built), k = Math.min(1, S.maxSize / size);
+  if (k < 1 || early) { free(built); built = build(G, tree, k, early); }
+  const { out, model, data } = built, joints = out.joints;
+  const p = data.geom_xpos, rb = model.geom_rbound;
+  let low = Infinity;
+  const limbs = out.nodes.length;   // Geoms 1..limbs; dahinter liegt der Parcours
+  for (let i = 1; i <= limbs; i++) low = Math.min(low, p[i * 3 + 2] - rb[i]);
+  for (const j of joints) { j.type = model.geom_type[j.geom]; j.size = Array.from(model.geom_size.subarray(j.geom * 3, j.geom * 3 + 3)); }
+  const J = joints.length;
+  // x, h, u: letzte Eingänge, Neuronen und Steuersignale pro Gelenk, auch für die Anzeige.
+  const c = { net, model, data, joints, nodes: out.nodes, freq: lerp(0.5, 2.5, G.v[0]), z0: 0.02 - low, step: 0, limbs,
+    x: new Float64Array(J * NI), h: new Float64Array(J * NH), u: new Float64Array(J), netSum: 0, rhySum: 0,
+    late: S.course && !early && COURSE_XML.balls.length > 0, plan: { G, tree, k } };   // late: Kugeln kommen erst später dazu
+  reset(c);
+  return c;
+}
+
+// Grösste Ausdehnung über die drei Weltachsen, aus Lage, Drehung und Grösse jedes Glieds.
+// Zeile a von geom_xmat sind die Anteile der Weltachse a an den lokalen Achsen, wie bei `lowest`.
+function extent({ out, model, data }) {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], p = data.geom_xpos, m = data.geom_xmat;
+  for (let i = 1; i <= out.nodes.length; i++) {
+    const s = model.geom_size.subarray(i * 3, i * 3 + 3), type = model.geom_type[i];
+    for (let a = 0; a < 3; a++) {
+      const r = lowest(type, s, m.subarray(i * 9 + a * 3, i * 9 + a * 3 + 3));
+      lo[a] = Math.min(lo[a], p[i * 3 + a] - r); hi[a] = Math.max(hi[a], p[i * 3 + a] + r);
+    }
+  }
+  return Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+}
+
+// Die Kugeln kosten in jedem Schritt Rechenzeit, auch 15 m entfernt (48 Stück: etwa 85 % mehr als 12). Darum
+// beginnt eine Kreatur in einem Modell ohne Kugeln. Nähert sie sich (`ballsFrom`), übernimmt ein zweites Modell
+// mit Kugeln ihren Zustand: Lage, Geschwindigkeit, Warmstart des Lösers. Die Glieder stehen in beiden Modellen
+// vorn, ihre Nummern bleiben. Geprüft wird nur an 50er-Schritten, damit Bewertung und Anzeige am selben
+// Schritt umschalten. Die meisten Kreaturen kommen nie so weit und kosten so viel wie ohne Kugeln.
+function addBalls(c) {
+  const { model, data } = build(c.plan.G, c.plan.tree, c.plan.k, true), old = c.data, nq = c.model.nq, nv = c.model.nv;
+  data.qpos.set(old.qpos.subarray(0, nq));
+  data.qvel.set(old.qvel.subarray(0, nv));
+  data.qacc_warmstart.set(old.qacc_warmstart.subarray(0, nv));
+  data.ctrl.set(old.ctrl);
+  mujoco.mj_forward(model, data);
+  free(c);
+  Object.assign(c, { model, data, late: false });
+}
+
+function build(G, tree, k, balls) {
+  const out = { joints: [], nodes: [], k }, body = limbXML(G, tree, out, null), joints = out.joints;
+  const xml = `<mujoco>
+  <compiler angle="radian"/>
+  <option timestep="${DT}" integrator="implicitfast"/>
+  <default>
+    <geom density="300" contype="1" conaffinity="0"/>
+    <joint armature="0.01" limited="true"/>
+  </default>
+  ${S.course ? COURSE_XML.assets : ''}
+  <worldbody>
+    <geom type="plane" size="0 0 1" contype="0" conaffinity="1"/>
+    ${body}
+    ${S.course ? COURSE_XML.body + (balls ? COURSE_XML.ballXML : '') : ''}
+  </worldbody>
+  <actuator>
+    ${joints.map((j, i) => `<position joint="j${i}" kp="${2 * j.force}" forcerange="${-j.force} ${j.force}"/>`).join('')}
+  </actuator>
+</mujoco>`;
+  const model = mujoco.MjModel.from_xml_string(xml), data = new mujoco.MjData(model);
+  mujoco.mj_forward(model, data);
+  return { out, model, data };
+}
+
+function reset(c) {
+  mujoco.mj_resetData(c.model, c.data);
+  c.data.qpos[2] = c.z0;
+  if (S.course) c.data.qpos[0] = S.start;   // Startpunkt auf der Bahn
+  c.step = 0;
+  c.h.fill(0);
+  c.netSum = c.rhySum = 0;
+}
+
+function free(c) { c.data.delete(); c.model.delete(); }
+
+// Steuerung: Sollwinkel pro Gelenk = Bereich * (Amplitude * sin(2 pi (f t + Phase)) + Netz), auf
+// den Bereich begrenzt. Eine Frequenz pro Kreatur; die Phase summiert sich entlang der Verbindungen
+// (Welle durch eine Kette). Ohne Netz (S.net aus) bleibt nur der Rhythmus.
+function advance(c, n) {
+  if (c.late && c.step % 50 === 0 && c.data.subtree_com[3] >= COURSE_XML.ballsFrom) addBalls(c);
+  const d = c.data, ctrl = d.ctrl, q = d.qpos, gx = d.geom_xpos, gm = d.geom_xmat, rm = d.xmat, J = c.joints.length;
+  for (; n > 0; n--, c.step++) {
+    const t = (c.step - N0) * DT;
+    for (let i = 0; i < J; i++) {
+      const j = c.joints[i];
+      let osc;
+      if (j.duty) {
+        // Verzogener Sinus: steigt während des Anteils duty der Periode, fällt im Rest. Bei 0,5 der Sinus.
+        const ph = c.freq * t + j.phase + 0.25, f = ph - Math.floor(ph), d = j.duty;
+        osc = -Math.cos(2 * Math.PI * (f < d ? 0.5 * f / d : 0.5 + 0.5 * (f - d) / (1 - d)));
+      } else osc = Math.sin(2 * Math.PI * (c.freq * t + j.phase));
+      let u = j.amp * osc;
+      c.rhySum += Math.abs(u);
+      if (c.net) {
+        const x = c.x, o = i * NI, gi = j.geom;
+        // Bodenkontakt: tiefster Punkt des Glieds über der Lauffläche darunter, 1 aufliegend, 0 ab 3 cm darüber.
+        const low = gx[gi * 3 + 2] - lowest(j.type, j.size, gm.subarray(gi * 9 + 6, gi * 9 + 9)) - (S.course ? groundAt(gx[gi * 3], gx[gi * 3 + 1]) : 0);
+        x[o] = q[7 + i] / j.range;
+        x[o + 1] = j.pj < 0 ? 0 : q[7 + j.pj] / c.joints[j.pj].range;
+        x[o + 2] = Math.min(1, Math.max(0, 1 - low / 0.03));
+        x[o + 3] = rm[17];                         // z-Achse der Wurzel nach oben: 1 aufrecht, -1 auf dem Rücken
+        x[o + 4] = osc;
+        x[o + 5] = 1;
+        const w = j.w, h = c.h, hb = i * NH;
+        for (let k = 0; k < NH; k++) {
+          let sum = w[NH * NI + k] * h[hb + k];
+          for (let a = 0; a < NI; a++) sum += w[k * NI + a] * x[o + a];
+          h[hb + k] = Math.tanh(sum);
+          const out = w[NH * NI + NH + k] * h[hb + k];
+          u += out; c.netSum += Math.abs(out);
+        }
+      }
+      c.u[i] = Math.max(-1, Math.min(1, u));
+      ctrl[i] = j.range * c.u[i];
+    }
+    mujoco.mj_step(c.model, d);
+  }
+}
+
+// Bewertung in Scheiben, damit die Anzeige flüssig bleibt. Fitness ist die horizontale
+// Strecke des Schwerpunkts (subtree_com des Wurzelglieds) nach der Settling-Phase, mal
+// "upright": dem kleinsten Kosinus der Neigung des Wurzelglieds gegenüber seiner Lage beim
+// Messbeginn. Wer sich überschlägt, kommt auf 0; so gewinnt Laufen gegen Rollen. Drehen um
+// die Hochachse kostet nichts.
+function startEval(g) {
+  let c = null;
+  try { c = hatch(g); } catch (e) { /* nicht kompilierbar: Fitness 0 */ }
+  if (c && !c.joints.length) { free(c); c = null; }
+  return { c, x0: 0, y0: 0, up: null, upright: 1 };
+}
+
+// Parcours-Regeln, alle 50 Schritte am Schwerpunkt geprüft. Wird eine Slalomstange auf der falschen Seite
+// passiert (y beim Überqueren ihrer x-Position, zwischen zwei Proben linear geschätzt) oder verlässt der
+// Schwerpunkt die Bahn seitlich, endet die Wertung dort. Am Ziel endet sie auch, jede übrige Sekunde zählt
+// einen Meter dazu, damit die Schnelleren vorne liegen. true heisst: Wertung zu Ende.
+// Wer STALL_S Sekunden lang keine STALL_M Meter über seine bisher beste Weite hinauskommt, steht still:
+// die Wertung endet dort, wo er gerade ist (`job.stall`). Das spart den grössten Teil der Rechenzeit für
+// Kreaturen, die nicht vom Fleck kommen. Grosszügig gewählt: an der ersten Treppe brauchte ein Champion
+// 5 s für knapp 1 m.
+const STALL_S = 10, STALL_M = 0.5;
+const ENDS = [];
+function courseCheck(job, x, y, step) {
+  if (job.px !== undefined) for (const s of COURSE.slalom) {
+    if (!(job.px < s.x && x >= s.x)) continue;
+    if (Math.sign(job.py + (y - job.py) * (s.x - job.px) / (x - job.px)) !== s.side) { job.end = s.x; return true; }
+  }
+  job.px = x; job.py = y;
+  if (Math.abs(y) > COURSE.W) { job.end = x; return true; }
+  if (x >= COURSE.finish) { job.end = COURSE.finish; job.bonus = (N - step) * DT; return true; }
+  if (job.bestX === undefined || x >= job.bestX + STALL_M) { job.bestX = x; job.bestStep = step; }
+  else if ((step - job.bestStep) * DT >= STALL_S) { job.end = x; job.stall = true; return true; }
+  return false;
+}
+
+// Abstand des tiefsten Glieds zum Boden (z = 0).
+function clearance(c) {
+  const m = c.model, gx = c.data.geom_xpos, gm = c.data.geom_xmat;
+  let low = Infinity;
+  for (let i = 1; i <= c.limbs; i++) low = Math.min(low, gx[i * 3 + 2] - lowest(m.geom_type[i], m.geom_size.subarray(i * 3, i * 3 + 3), gm.subarray(i * 9 + 6, i * 9 + 9)));
+  return low;
+}
+
+function runEval(job, steps) {
+  const c = job.c;
+  if (!c) return 0;
+  // In 50er-Schritten, damit das Ergebnis nicht von der Scheibengrösse abhängt.
+  for (const end = Math.min(N, c.step + steps); c.step < end;) {
+    // Springen: ab Messbeginn alle 5 Schritte (25 ms) die Höhe messen. Den höchsten Punkt verfehlt das um
+    // weniger als 1 mm; jeden Schritt zu messen kostete 20 bis 25 % mehr Rechenzeit.
+    const jump = S.jump && c.step >= N0;
+    advance(c, Math.min((jump ? 5 : 50) - c.step % (jump ? 5 : 50), end - c.step));
+    if (jump && c.step % 5 === 0) job.air = Math.max(job.air ?? 0, clearance(c));
+    if (c.step < N0 || c.step % 50) continue;
+    const m = c.data.xmat;                       // Wurzelglied: Zeile 3 der Rotationsmatrix
+    if (c.step === N0) {
+      job.x0 = c.data.subtree_com[3]; job.y0 = c.data.subtree_com[4];
+      job.up = [m[15], m[16], m[17]];
+    }
+    job.upright = Math.min(job.upright, job.up[0] * m[15] + job.up[1] * m[16] + job.up[2] * m[17]);
+    if (S.course && courseCheck(job, c.data.subtree_com[3], c.data.subtree_com[4], c.step)) break;
+  }
+  if (c.step < N && job.end === undefined) return undefined;
+  const up = S.upright ? Math.max(0, job.upright) : 1;
+  let d;
+  if (S.jump && !S.course) {
+    // Springen: grösste Höhe des tiefsten Punkts über dem Boden, in Metern.
+    job.dist = job.air ?? 0;
+    job.heading = 0;
+    d = job.dist * up;
+    if (!Number.isFinite(d)) d = job.dist = 0;
+  } else if (S.course) {
+    // Parcours: Fortschritt entlang +x seit Messbeginn, bei Abbruch bis zur Abbruchstelle.
+    job.dist = Math.max(0, (job.end ?? c.data.subtree_com[3]) - job.x0);
+    job.heading = 0;
+    // Mit «Jump» 5 m pro Meter Sprunghöhe dazu: hilft beim Abheben, wiegt aber nie eine freie Bahn auf.
+    d = (job.dist + (job.bonus ?? 0) + (S.jump ? 5 * (job.air ?? 0) : 0)) * up;
+    if (!Number.isFinite(d)) job.dist = 0;
+    // Endpunkte der letzten Bewertungen fürs Dashboard: x, y, Art (0 Zeit um oder Stillstand, 1 Abbruch, 2 Ziel).
+    ENDS.push(job.endPoint = [job.end ?? c.data.subtree_com[3], job.end === undefined ? c.data.subtree_com[4] : job.py, job.end === undefined || job.stall ? 0 : job.bonus ? 2 : 1]);
+    if (ENDS.length > 3000) ENDS.shift();
+  } else {
+    const dx = c.data.subtree_com[3] - job.x0, dy = c.data.subtree_com[4] - job.y0;
+    d = Math.hypot(dx, dy) * up;
+    job.dist = Number.isFinite(d) ? Math.hypot(dx, dy) : 0;   // zurückgelegte Meter, ohne Abzug
+    job.heading = Math.atan2(dy, dx);              // Laufrichtung, die Anzeige dreht alle auf +x
+  }
+  // Für die Statistik: Körperbau und wie stark das Netz den Rhythmus verändert (0 = gar nicht).
+  Object.assign(job, { limbs: c.limbs, joints: c.joints.length, types: new Set(c.nodes).size, net: c.rhySum ? c.netSum / c.rhySum : 0 });
+  free(c);
+  return Number.isFinite(d) && d < 5 * TRIAL ? d : 0;   // explodierte Simulation zählt nicht
+}
+
+// Inseln: ISLANDS unabhängige Populationen, die reihum je eine Generation rechnen. Wie weit eine
+// Population kommt, hängt stark vom Zufall ihres Starts ab; mehrere Starts nutzen das aus.
+// Eine Insel, die RESEED eigene Generationen ohne Fortschritt bleibt und nicht die beste ist,
+// beginnt mit Zufallskreaturen neu.
+const randomPop = () => Array.from({ length: POP }, () => ({ g: randomGenome() }));
+// Jede Kreatur bekommt einen Namen aus ihrem Genom (Adjektiv plus Tier, wie Ubuntu-Versionen).
+// Gleiches Genom, gleicher Name; ein mutiertes Kind heisst anders. Steht im Kern, weil auch das Ereignisprotokoll Namen braucht.
+const ADJECTIVES = ('Amber Bold Brisk Calm Clever Cosmic Crimson Curious Dapper Daring Dusty Eager Fuzzy Gentle Giddy Golden Grumpy Hasty Humble Jolly Keen Lanky Lucky Mellow Mighty Nimble Noble Plucky Quiet Rapid Rusty Shy Silent Sleepy Sly Snappy Stubborn Sunny Swift Tidy Trusty Velvet Wandering Wiry Witty Wobbly Zesty Zippy '
+  + 'Analog Async Atomic Binary Bionic Cached Carbon Chromed Coaxial Cyber Diesel Digital Elastic Electric Fractal Galvanic Geared Hex Hydraulic Inertial Ionic Kinetic Laminar Lunar Magnetic Modular Neon Nuclear Optical Orbital Parallel Photonic Pneumatic Quantum Radial Recursive Robotic Servo Solar Sonic Static Tensile Thermal Turbo Vector Voltaic Wired Zero').split(' ');
+const ANIMALS = 'Axolotl Badger Beetle Bison Capybara Cicada Crab Dingo Echidna Ferret Gecko Gibbon Heron Ibex Iguana Jackal Kiwi Koala Lemur Lobster Lynx Mantis Marmot Mole Narwhal Newt Ocelot Okapi Otter Pangolin Pelican Puffin Quokka Raccoon Salamander Shrew Sloth Stoat Tapir Termite Toad Urchin Vole Walrus Weasel Wombat Yak Zebu'.split(' ');
+function nameOf(g) {
+  let h = 2166136261;                               // FNV-1a über das Genom
+  for (const ch of JSON.stringify(g)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  h >>>= 0;
+  return ADJECTIVES[h % ADJECTIVES.length] + ' ' + ANIMALS[Math.floor(h / ADJECTIVES.length) % ANIMALS.length];
+}
+
+let islands = Array.from({ length: ISLANDS }, () => ({ pop: randomPop(), top: null, stale: 0, mean: 0 }));
+let turn = 0;          // Insel, die gerade rechnet
+let reseeds = 0;       // wie oft eine Insel neu begonnen hat
+let generation = 0, champion = null, job = null, current = null;
+// Verlauf: pro Generation eine Zeile mit den Spalten in COLUMNS, danach die beste Fitness jeder
+// Insel. stats.html liest das aus dem Speicher. Ältere Läufe haben nur die ersten beiden Spalten.
+const COLUMNS = ['best', 'mean', 'metres', 'limbs', 'joints', 'types', 'net', 'island', 'ms'];
+let history = [];
+// Ereignisse: neuer Champion (mit Genom), Insel-Neustart, Ghost, seed. Für die Zeitleiste in stats.html.
+let events = [];
+let lastGenAt = performance.now();   // für die Dauer einer Generation
+let ghosts = [];    // archivierte Champions, ältester zuerst
+
+// Arbeitet ms Millisekunden an der laufenden Generation. Ist sie durch: die besten KEEP
+// überleben unverändert (und werden nicht neu bewertet, die Physik ist deterministisch),
+// der Rest sind Nachkommen von ihnen. Eine Generation ist ein Schritt einer Insel.
+// So rechnen die Läufe in Node und die Seite, solange keine Web Worker bereit sind (siehe `pump`).
+function evolveStep(ms) {
+  const end = performance.now() + ms;
+  while (performance.now() < end) {
+    if (!job) {
+      current = islands[turn].pop.find(p => p.fit === undefined);
+      if (!current) { closeGeneration(); continue; }
+      job = startEval(current.g);
+    }
+    const fit = runEval(job, 100);
+    if (fit !== undefined) { Object.assign(current, result(fit, job)); job = null; }
+  }
+}
+const result = (fit, j) => ({ fit, heading: j.heading ?? 0, dist: j.dist ?? 0, limbs: j.limbs ?? 0, joints: j.joints ?? 0, types: j.types ?? 0, net: j.net ?? 0 });
+
+// Eine ganze Bewertung am Stück, für die Web Worker der Seite. `end` ist der Endpunkt auf dem Parcours.
+function evaluate(g) {
+  const j = startEval(g);
+  let fit;
+  while ((fit = runEval(j, N)) === undefined);
+  return { ...result(fit, j), end: j.endPoint };
+}
+
+// Schliesst die Generation der Insel ab, die an der Reihe ist: alle ihre Kreaturen sind bewertet.
+function closeGeneration() {
+  const isl = islands[turn];
+  const pop = isl.pop.sort((a, b) => b.fit - a.fit);
+  isl.mean = pop.reduce((a, p) => a + p.fit, 0) / POP;
+  // generation im Champion ist die Generation, in der diese Kreatur zum ersten Mal vorn lag.
+  if (!isl.top || pop[0].fit > isl.top.fit) {
+    const p = pop[0];
+    isl.top = { g: p.g, fit: p.fit, dist: p.dist, heading: p.heading, generation, limbs: p.limbs, joints: p.joints, types: p.types, net: p.net };
+    isl.stale = 0;
+  } else isl.stale++;
+  const r3 = v => Math.round((v ?? 0) * 1000) / 1000, seen = islands.filter(i => i.top);
+  if (!champion || isl.top.fit > champion.fit) {
+    champion = isl.top;
+    const t = champion;
+    events.push({ gen: generation + 1, type: 'champion', name: nameOf(t.g), island: turn, fit: r3(t.fit), dist: r3(t.dist), limbs: t.limbs, joints: t.joints, types: t.types, net: r3(t.net), g: t.g });
+  }
+  const now = performance.now();
+  history.push([r3(champion.fit), r3(seen.reduce((a, i) => a + i.mean, 0) / seen.length), r3(champion.dist), champion.limbs ?? 0, champion.joints ?? 0,
+    champion.types ?? 0, r3(champion.net), islands.indexOf(islands.find(i => i.top === champion)), Math.round(now - lastGenAt),
+    ...islands.map(i => i.top ? r3(i.top.fit) : 0)]);
+  lastGenAt = now;
+  // Ins Archiv nur, wer besser ist als der letzte Ghost. Sonst liefen bei Stillstand Kopien mit.
+  if ((generation + 1) % GHOST_EVERY === 0 && !(ghosts.at(-1)?.fit >= champion.fit)) {
+    ghosts = [...ghosts, champion].slice(-GHOSTS);
+    events.push({ gen: generation + 1, type: 'ghost', name: nameOf(champion.g) });
+  }
+
+  if (isl.stale >= RESEED && isl.top !== champion) {
+    Object.assign(isl, { pop: randomPop(), top: null, stale: 0 });
+    reseeds++;
+    events.push({ gen: generation + 1, type: 'reseed', island: turn });
+  } else {
+    // Stillstand: ab STALE Generationen ohne Fortschritt gibt es alle STALE Generationen einen
+    // Schub von KICK Generationen: dreifache Mutation, und der zweite Elternteil ist in der
+    // Hälfte der Fälle ein frisches Zufallsgenom. Reine Zufallskreaturen brächten nichts,
+    // sie fielen in der nächsten Generation wieder heraus.
+    const kicking = isl.stale >= STALE && isl.stale % STALE < KICK;
+    const elite = pop.slice(0, KEEP);
+    // Nachkommen: Kopie, Crossover (S.cross) oder Grafting (S.graft), danach Mutationen.
+    // Standard 60/10/30. Sims nimmt 40/30/30 bei 300 Kreaturen.
+    const partner = () => kicking && Math.random() < 0.5 ? randomGenome() : pick(elite).g;
+    isl.pop = elite.concat(Array.from({ length: POP - KEEP }, () => {
+      const a = pick(elite).g, r = Math.random();
+      let g = r < 1 - S.cross - S.graft ? a : r < 1 - S.graft ? crossover(a, partner()) : graft(a, partner());
+      for (let k = 0; k < MUTATIONS * (kicking ? 3 : 1); k++) g = mutate(g);
+      return { g };
+    }));
+  }
+  generation++;
+  turn = (turn + 1) % ISLANDS;
+}
+//</core>
+
+// URL mit allen abweichenden Einstellungen, ohne ?reset. Damit lässt sich eine Konfiguration als Link ablegen.
+function settingsQuery(s) {
+  const q = new URLSearchParams();
+  for (const o of SPEC) if (s[o.key] !== o.def) {
+    q.set(o.key, typeof o.def === 'boolean' ? +s[o.key] : o.key === 'reseed' && s.reseed >= NEVER ? 'never' : s[o.key]);
+  }
+  return q.size ? '?' + q : '';
+}
+try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(S)); } catch (e) { /* gilt dann nur für diesen Aufruf */ }
+// window.history, weil der Kern mit history den Fitnessverlauf meint.
+try { window.history.replaceState(null, '', location.pathname + settingsQuery(S)); } catch (e) { /* manche Browser sperren das unter file:// */ }
+
+// Zustand überlebt einen Neustart. ?reset in der URL beginnt von vorn. Ein Lauf gilt nur mit
+// den Einstellungen, mit denen er entstand; Läufe von vor den Einstellungen haben die Standardwerte.
+const STORE = 'evolvedCreatures.v24';   // stats.html liest denselben Schlüssel
+let startedAt = new Date().toISOString();
+try {
+  if (resetRequested) localStorage.removeItem(STORE);
+  const saved = JSON.parse(localStorage.getItem(STORE));
+  if (saved && JSON.stringify(cleanSettings(saved.settings)) === JSON.stringify(S)
+      && saved.islands.length === ISLANDS && saved.islands.every(i => i.pop.length === POP)) {
+    ({ islands, turn, reseeds, generation, champion, ghosts, history } = saved);
+    events = saved.events ?? [];
+    startedAt = saved.startedAt ?? startedAt;
+    if (Array.isArray(saved.ends)) ENDS.push(...saved.ends.filter(e => Array.isArray(e) && e.length === 3 && e.every(Number.isFinite)).slice(-3000));
+    // JSON trennt gleiche Objekte: den Champion wieder auf das top seiner Insel zeigen lassen,
+    // sonst gälte diese Insel nicht mehr als die beste und könnte neu beginnen.
+    champion = islands.map(i => i.top).find(t => t && champion && t.fit === champion.fit) ?? champion;
+  }
+} catch (e) { /* kein oder kaputter Speicherstand: neu beginnen */ }
+let savedGeneration = generation;
+
+// Restart und Apply löschen den ganzen Fortschritt, darum zwei Klicks: der erste scharft den
+// Knopf für 3 s. Kein confirm(), ein Browser-Dialog würde einen Screensaver blockieren.
+let restarting = false;
+function twoClicks(button, action, ask = 'Erase progress?') {
+  const label = button.textContent;
+  let disarm = 0;
+  button.addEventListener('click', () => {
+    if (!button.classList.contains('armed')) {
+      button.classList.add('armed');
+      button.textContent = ask;
+      disarm = setTimeout(() => { button.classList.remove('armed'); button.textContent = label; }, 3000);
+      return;
+    }
+    clearTimeout(disarm);
+    action();
+  });
+}
+function restartWith(s) {
+  restarting = true;                               // die Hauptschleife speichert sonst vor dem Reload nochmals
+  try { localStorage.removeItem(STORE); localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch (err) { /* der Reload beginnt ohnehin neu */ }
+  location.replace(location.pathname + settingsQuery(s));
+}
+twoClicks($('restart'), () => restartWith(S));
+
+// ---- Szene. MuJoCo ist z-up, darum auch die Kamera.
+const token = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(token('--horizon'), 14, 55);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+camera.up.set(0, 0, 1);
+const CAMERA0 = new THREE.Vector3(1.2, -5.2, 1.2);   // Startversatz der Kamera zum Champion, Taste R
+camera.position.set(1.2, -5.2, 1.6);
+
+// Maus: ziehen dreht um den Champion, Rad zoomt. Das Ziel folgt dem Champion, darum kein Pan.
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enablePan = false;
+controls.enableDamping = true;
+controls.minDistance = 2;
+controls.maxDistance = 25;
+controls.maxPolarAngle = Math.PI / 2 - 0.03;   // nicht unter den Boden
+
+// Himmel: Kugel um die Kamera, Verlauf vom Horizont zum Himmelblau.
+const sky = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: { top: { value: new THREE.Color(token('--sky')) }, bottom: { value: new THREE.Color(token('--horizon')) } },
+  vertexShader: 'varying vec3 d; void main() { d = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 top; uniform vec3 bottom; varying vec3 d;
+    void main() { gl_FragColor = vec4(mix(bottom, top, smoothstep(0.0, 0.22, normalize(d).z)), 1.0);
+    #include <colorspace_fragment>
+    }`,
+}));
+scene.add(sky);
+scene.add(new THREE.HemisphereLight(0xffffff, token('--floor-dark'), 1.5));   // weiss, sonst färbt der Himmel den Boden blau
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 30 });
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+
+// Schachboden: 2x2-Pixel-Textur, ein Feld ist 1 m. Mipmaps mitteln die Ferne zu einem Ton.
+const tile = document.createElement('canvas');
+tile.width = tile.height = 2;
+const tctx = tile.getContext('2d');
+[[0, 0, '--floor-light'], [1, 1, '--floor-light'], [1, 0, '--floor-dark'], [0, 1, '--floor-dark']]
+  .forEach(([x, y, n]) => { tctx.fillStyle = token(n); tctx.fillRect(x, y, 1, 1); });
+const checker = new THREE.CanvasTexture(tile);
+checker.wrapS = checker.wrapT = THREE.RepeatWrapping;
+checker.repeat.set(200, 200);
+checker.magFilter = THREE.NearestFilter;
+checker.anisotropy = renderer.capabilities.getMaxAnisotropy();
+checker.colorSpace = THREE.SRGBColorSpace;
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ map: checker }));
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ---- Parcours, aus denselben Daten wie die Geoms im Kern. Wie course.html, aber ohne ConvexGeometry:
+// die lädt ein weiteres Addon nach, das die Offline-Fassung nicht einbettet. Quader als BoxGeometry,
+// Buckel, Leisten und Keile als extrudiertes Profil, Stangen als Zylinder.
+if (S.course) {
+  const mats = {}, matsFor = name => mats[name] ??= (() => {
+    const top = new THREE.Color(token(`--${name.toLowerCase()}-top`));
+    // Zwei Leuchtstärken im Wechsel, sonst verschmelzen gleich hohe Stufen von oben zu einer Fläche.
+    return { top: new THREE.MeshLambertMaterial({ color: top, emissive: top, emissiveIntensity: 0.45 }),
+      top2: new THREE.MeshLambertMaterial({ color: top, emissive: top, emissiveIntensity: 0.25 }),
+      side: new THREE.MeshLambertMaterial({ color: token(`--${name.toLowerCase()}-side`) }) };
+  })();
+  const partGeometry = part => {
+    if (part.box) {
+      const [x0, x1, y0, y1, z0, z1] = part.box;
+      return new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2).toNonIndexed();
+    }
+    if (part.tilt) {   // Keil: Dreieck in y-z, entlang x gezogen
+      const [x0, x1, side, h] = part.tilt, W = COURSE.W;
+      const g = new THREE.ExtrudeGeometry(new THREE.Shape([[-W, 0], [W, 0], [side * W, h]].map(([y, z]) => new THREE.Vector2(y, z))), { depth: x1 - x0, bevelEnabled: false });
+      g.applyMatrix4(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0))).translate(x0, 0, 0);
+      g.computeVertexNormals();
+      return g;
+    }
+    const profile = part.verts.filter((v, i) => i % 2 === 0);   // Prisma: jeder zweite Eckpunkt ist das Profil bei y = -W
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape(profile.map(([x, , z]) => new THREE.Vector2(x, z))), { depth: 2 * COURSE.W, bevelEnabled: false });
+    g.rotateX(Math.PI / 2).translate(0, COURSE.W, 0);
+    g.computeVertexNormals();   // nicht indiziert: so bekommt jede Fläche ihre eigene Normale
+    return g;
+  };
+  // Laufflächen (Normale nach oben) und Seiten getrennt, je mit eigenem Material.
+  const split = geo => {
+    const p = geo.attributes.position.array, n = geo.attributes.normal.array, parts = { top: [[], []], side: [[], []] };
+    for (let t = 0; t < p.length; t += 9) {
+      const [pos, nor] = parts[n[t + 2] > 0.5 ? 'top' : 'side'];
+      pos.push(...p.slice(t, t + 9)); nor.push(...n.slice(t, t + 9));
+    }
+    geo.dispose();
+    return Object.entries(parts).filter(([, [pos]]) => pos.length).map(([k, [pos, nor]]) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      return [k, g];
+    });
+  };
+  // Slalomstangen gestreift wie Torstangen, im 10-cm-Takt.
+  const stripes = document.createElement('canvas');
+  stripes.width = 1; stripes.height = 5;
+  const sctx = stripes.getContext('2d');
+  for (let i = 0; i < 5; i++) { sctx.fillStyle = i % 2 ? token('--surface') : token('--coral-side'); sctx.fillRect(0, i, 1, 1); }
+  const stripeTex = new THREE.CanvasTexture(stripes);
+  stripeTex.magFilter = THREE.NearestFilter;
+  stripeTex.colorSpace = THREE.SRGBColorSpace;
+  const poleMat = new THREE.MeshLambertMaterial({ map: stripeTex });
+  for (const leg of COURSE.legs) for (const [pi, part] of leg.parts.entries()) {
+    if (part.ball) continue;   // Kugeln bewegen sich: sie gehören zur Kreatur, die sie anstösst (spawn)
+    const meshes = part.pole
+      ? [new THREE.Mesh(new THREE.CylinderGeometry(part.pole[2], part.pole[2], part.pole[3], 12).rotateX(Math.PI / 2)
+        .translate(part.pole[0], part.pole[1], part.pole[3] / 2), poleMat)]
+      : split(partGeometry(part)).map(([k, g]) => new THREE.Mesh(g, matsFor(leg.name)[k === 'top' && pi % 2 ? 'top2' : k]));
+    for (const mesh of meshes) { mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh); }
+  }
+  // Linien am Boden: Start, Bahnränder, Ziel als Schachmuster, Slalomweg gestrichelt.
+  const W = COURSE.W, ink = new THREE.MeshLambertMaterial({ color: token('--ink') });
+  const flat = (x0, x1, y0, y1, mat) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, y1 - y0), mat);
+    m.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0.002);
+    m.receiveShadow = true;
+    scene.add(m);
+  };
+  flat(COURSE.start - 0.03, COURSE.start + 0.03, -W, W, ink);
+  for (const y of [-W, W]) flat(COURSE.start, COURSE.finish, y - 0.015, y + 0.015, ink);
+  const fin = document.createElement('canvas');
+  fin.width = 2; fin.height = 24;
+  const fctx = fin.getContext('2d');
+  for (let i = 0; i < 24; i++) for (let j = 0; j < 2; j++) { fctx.fillStyle = (i + j) % 2 ? token('--ink') : token('--surface'); fctx.fillRect(j, i, 1, 1); }
+  const finTex = new THREE.CanvasTexture(fin);
+  finTex.magFilter = THREE.NearestFilter;
+  finTex.colorSpace = THREE.SRGBColorSpace;
+  flat(COURSE.finish, COURSE.finish + 0.25, -W, W, new THREE.MeshLambertMaterial({ map: finTex }));
+  const sl = COURSE.slalom, path = [new THREE.Vector3(sl[0].x - 1, 0, 0.004), ...sl.map(p => new THREE.Vector3(p.x, p.side * 0.45, 0.004)),
+    new THREE.Vector3(sl.at(-1).x + 1, 0, 0.004)];
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3(path).getPoints(120)),
+    new THREE.LineDashedMaterial({ color: token('--ink-2'), dashSize: 0.12, gapSize: 0.08 }));
+  line.computeLineDistances();
+  scene.add(line);
+}
+
+new ResizeObserver(() => {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  // Mit beiden Panels wird die Szene schmal. Damit der Champion nicht seitlich hinausläuft, bleibt
+  // der horizontale Blickwinkel mindestens so breit wie bei 40° vertikal und Seitenverhältnis 1,4.
+  const minHalf = Math.tan(20 * Math.PI / 180) * 1.4;
+  camera.fov = Math.min(75, 2 * Math.atan(Math.max(Math.tan(20 * Math.PI / 180), minHalf / camera.aspect)) * 180 / Math.PI);
+  camera.updateProjectionMatrix();
+}).observe(view);
+
+// ---- Kreaturen auf dem Boden: der Champion (level 0) und die Ghosts (level 1 bis 3, je älter
+// desto blasser). Jede hat ihre eigene MuJoCo-Simulation, darum berühren sie sich nie.
+// Glieder tragen die Farbe ihres Genom-Knotens.
+const NODE = [0, 1, 2, 3].map(i => token('--node-' + i));
+const FADE = [0, 0.35, 0.5, 0.65], ALPHA = [1, 0.42, 0.32, 0.24];
+const materials = {};
+const material = (node, level) => materials[node + '/' + level] ??= new THREE.MeshStandardMaterial({
+  color: new THREE.Color(NODE[node]).lerp(new THREE.Color(0xffffff), FADE[level]),
+  roughness: 0.55, transparent: level > 0, opacity: ALPHA[level], depthWrite: level === 0,
+});
+
+let race = [], traces = [];
+let hovered = null;   // Index der Kreatur im Rennen, über deren Namen in «On the floor» die Maus steht
+let shownSaved = null; // gespeicherte Kreatur, die im Rennen mitläuft («show»)
+const edgeMaterial = new THREE.LineBasicMaterial({ color: token('--highlight'), depthTest: false, transparent: true });
+const HISTORY = 180;   // Frames, etwa 3 s
+
+// Auf dem Parcours läuft jede Kreatur so, wie sie simuliert wurde; gedreht wird nur auf freier Fläche.
+// Eine gespeicherte Kreatur von freier Fläche bringt ihre Laufrichtung mit, die gilt hier nicht.
+const headingOf = info => S.course || S.jump ? 0 : info.heading ?? 0;
+
+// Kugeln des Parcours: jede Kreatur im Rennen hat in ihrer Simulation eigene. Gezeigt werden nur die des Champions,
+// sonst lägen bis zu vier Sätze übereinander. Leichte und schwere in zwei Farben.
+const ballGeometry = new THREE.SphereGeometry(1, 24, 16);
+const ballMats = ['--balls-top', '--balls-side'].map(n => new THREE.MeshLambertMaterial({ color: token(n) }));
+
+function spawn(info, level, index) {
+  const c = hatch(info.g, info.net ?? S.net), group = new THREE.Group(), { model } = c;
+  group.rotation.z = -headingOf(info);           // Laufrichtung auf +x drehen
+  const meshes = c.nodes.map((node, i) => {
+    const [a, b, d] = model.geom_size.subarray((i + 1) * 3, (i + 1) * 3 + 3), type = model.geom_type[i + 1];
+    // Kapsel und Zylinder: Three.js legt sie auf y, MuJoCo auf z.
+    const geometry = type === 2 ? new THREE.SphereGeometry(a, 16, 12)
+      : type === 4 ? new THREE.SphereGeometry(1, 16, 12).scale(a, b, d)
+      : type === 3 ? new THREE.CapsuleGeometry(a, 2 * b, 6, 16).rotateX(Math.PI / 2)
+      : type === 5 ? new THREE.CylinderGeometry(a, a, 2 * b, 16).rotateX(Math.PI / 2)
+      : new THREE.BoxGeometry(2 * a, 2 * b, 2 * d);
+    const mesh = new THREE.Mesh(geometry, material(node, level));
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = level === 0;
+    // Umriss für das Hervorheben: Kanten, bei runden Formen ein grobes Gitter, durch alles hindurch sichtbar.
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, type === 6 ? 1 : 20), edgeMaterial);
+    edges.visible = index === hovered;
+    edges.renderOrder = 10;
+    mesh.add(edges);
+    group.add(mesh);
+    return mesh;
+  });
+  const balls = S.course && !index ? COURSE_XML.balls.map(([, , r, , heavy]) => {
+    const m = new THREE.Mesh(ballGeometry, ballMats[heavy]);
+    m.scale.setScalar(r);
+    m.castShadow = m.receiveShadow = true;
+    group.add(m);
+    return m;
+  }) : [];
+  scene.add(group);
+  const tag = document.createElement('div');
+  tag.className = level ? 'tag ghost' : 'tag';
+  // Eine Zeile: «Nuclear Kiwi: gen 25», bei gespeicherten «: saved», bei zufälligen nur der Name.
+  tag.textContent = (info.name ?? nameOf(info.g)) + (info.saved ? ': saved' : info.generation === undefined ? '' : ': gen ' + (info.generation + 1));
+  view.append(tag);
+  return { info, level, index, c, group, meshes, balls, tag, tw: tag.offsetWidth, th: tag.offsetHeight + 2 };   // einmal messen, nicht pro Frame
+}
+
+function highlight(index) {
+  hovered = index;
+  for (const r of race) for (const m of r.meshes) m.children[0].visible = r.index === index;
+}
+
+function startRace() {
+  for (const r of race) {
+    free(r.c);
+    scene.remove(r.group);
+    r.meshes.forEach(m => { m.geometry.dispose(); m.children[0].geometry.dispose(); });
+    r.tag.remove();
+  }
+  const lead = champion ?? { g: islands[0].pop[0].g };
+  const old = ghosts.filter(g => g.generation !== lead.generation).reverse();   // neuester zuerst
+  // Eine gespeicherte Kreatur läuft mit dem Aussehen des jüngsten Ghosts mit, mit ihren eigenen
+  // Einstellungen fürs Netz.
+  const saved = shownSaved ? [{ g: shownSaved.genome, fit: shownSaved.fitness, dist: shownSaved.metres, heading: shownSaved.heading,
+    name: shownSaved.name, net: shownSaved.settings?.net ?? S.net, saved: true }] : [];
+  race = [lead, ...old, ...saved].map((info, i) => spawn(info, info.saved ? 1 : Math.min(i, 3), i));
+  traces = race[0].c.joints.map(() => []);
+  drawGenotype(lead.g, race[0].c);
+  buildNets();
+  $('race').replaceChildren(...race.map(r => {
+    const li = document.createElement('li');
+    // Zeile 1: Name und Meter pro 10 s. Zeile 2: Generation und Fitness. Ghost oder Champion zeigt das Quadrat.
+    li.innerHTML = `<i style="--o: ${ALPHA[r.level]}"></i><b></b><span></span><small></small><small></small>`;
+    li.children[1].textContent = r.info.name ?? nameOf(r.info.g);
+    li.children[2].textContent = r.info.dist === undefined ? '' : per10(r.info.dist) + ' m';
+    li.children[3].textContent = r.info.saved ? 'saved' : r.info.generation === undefined ? 'random' : 'gen ' + (r.info.generation + 1);
+    li.children[4].textContent = r.info.fit === undefined ? '' : 'fitness ' + r.info.fit.toFixed(2);
+    if (!r.info.saved) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'save', textContent: 'save' });
+      b.addEventListener('click', () => saveCreature(r.info, b));
+      li.append(b);
+    }
+    li.addEventListener('mouseenter', () => highlight(r.index));
+    li.addEventListener('mouseleave', () => highlight(null));
+    return li;
+  }));
+  if (S.course) drawTrack();
+}
+
+// ---- Parcours im Dashboard, von oben (+x nach rechts, +y nach oben, 1 m = 5,6 px): Hindernisse in ihrer
+// Laufflächenfarbe, die Endpunkte der letzten 3000 Bewertungen (`ENDS`) als blasse Punkte, Abbrüche rot, Ziel violett,
+// die Kreaturen live als Quadrate wie in «On the floor». Der violette Strich ist das Ende des letzten Durchlaufs
+// des Champions (`reach`).
+const TK = 280 / COURSE.finish, clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+const TX = x => 4 + clamp(x, 0, COURSE.finish) * TK, TY = y => 2 + (COURSE.W - clamp(y, -COURSE.W, COURSE.W)) * TK;
+let reach;
+function drawTrack() {
+  const svg = $('track');
+  if (!svg.firstChild) {
+    $('coursesec').hidden = false;
+    const W = COURSE.W, parts = COURSE.legs.flatMap(l => l.parts.map(p => {
+      const fill = `style="fill: var(${l.name === 'Slalom' ? '--coral-side' : `--${l.name.toLowerCase()}-top`})"`;   // Lauffläche, wie von oben gesehen
+      if (p.pole) return `<circle cx="${TX(p.pole[0])}" cy="${TY(p.pole[1])}" r="1.5" ${fill}/>`;
+      if (p.ball) return `<circle cx="${TX(p.ball[0])}" cy="${TY(p.ball[1])}" r="${Math.max(1.2, p.ball[2] * TK)}" style="fill: var(--balls-${p.ball[4] ? 'side' : 'top'})"/>`;
+      const xs = p.verts.map(v => v[0]), ys = p.verts.map(v => v[1]), x0 = Math.min(...xs), y1 = Math.max(...ys);
+      return `<rect x="${TX(x0)}" y="${TY(y1)}" width="${(Math.max(...xs) - x0) * TK}" height="${(y1 - Math.min(...ys)) * TK}" ${fill}/>`;
+    }));
+    const ticks = [0, 10, 20, 30, 40, 50].map(m => `<text x="${TX(m)}" y="46"${m === 50 ? ' style="text-anchor: end"' : ''}>${m}</text>`);
+    svg.innerHTML = `<rect x="${TX(0)}" y="${TY(W)}" width="${COURSE.finish * TK}" height="${2 * W * TK}" style="fill: none; stroke: var(--rule)"/>${parts.join('')}${ticks.join('')}`
+      + `<g id="ends"></g><line id="reach" y1="${TY(W) - 1}" y2="${TY(-W) + 1}" visibility="hidden" style="stroke: var(--best); stroke-width: 2"/><g id="marks"></g>`;
+  }
+  drawEnds();
+  // Champion zuletzt, damit er oben liegt.
+  $('marks').replaceChildren(...race.map(r => {
+    r.mark = document.createElementNS(svg.namespaceURI, 'rect');
+    for (const [k, v] of Object.entries({ width: 6, height: 6, rx: 1.5, opacity: ALPHA[r.level] })) r.mark.setAttribute(k, v);
+    return r.mark;
+  }).reverse());
+  if (reach !== undefined) { $('reach').setAttribute('x1', TX(reach)); $('reach').setAttribute('x2', TX(reach)); $('reach').setAttribute('visibility', 'visible'); }
+}
+const END_STYLE = ['fill: var(--ink); fill-opacity: 0.15', 'fill: var(--highlight); fill-opacity: 0.4', 'fill: var(--best)'];
+let lastEnd;   // zuletzt gezeichneter Endpunkt: nur die neueren anhängen, die ältesten vorn entfernen
+function drawEnds() {
+  const g = $('ends');
+  if (!S.course || !g) return;
+  const from = ENDS.lastIndexOf(lastEnd) + 1;
+  if (!from) g.replaceChildren();
+  g.insertAdjacentHTML('beforeend', ENDS.slice(from).map(([x, y, k]) => `<circle cx="${TX(x).toFixed(1)}" cy="${TY(y).toFixed(1)}" r="1.2" style="${END_STYLE[k]}"/>`).join(''));
+  while (g.childElementCount > ENDS.length) g.firstChild.remove();
+  lastEnd = ENDS.at(-1);
+}
+
+// Schwerpunkt in gedrehten Koordinaten (Laufrichtung = +x).
+function com(r) {
+  const h = headingOf(r.info), p = r.c.data.subtree_com;
+  return [Math.cos(h) * p[3] + Math.sin(h) * p[4], -Math.sin(h) * p[3] + Math.cos(h) * p[4], p[5]];
+}
+
+// ---- Gespeicherte Kreaturen. Eigener Schlüssel, unabhängig vom Lauf: Restart und Apply löschen
+// sie nicht. Der Name wird mitgespeichert, damit er auch bei geänderten Wortlisten gleich bleibt.
+const ZOO = 'evolvedCreatures.zoo';
+let zoo = [];
+// Durch importGenome: ältere Einträge tragen noch den Schalter anti statt des Phasenversatzes.
+try { zoo = (JSON.parse(localStorage.getItem(ZOO)) ?? []).map(e => e && { ...e, genome: importGenome(e.genome) }).filter(e => e?.genome); } catch (e) { /* leer */ }
+const storeZoo = () => { try { localStorage.setItem(ZOO, JSON.stringify(zoo)); } catch (e) { $('zoomsg').textContent = 'Could not store, the browser storage is full or blocked.'; } };
+const sameGenome = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function entryFor(info) {
+  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: info.name ?? nameOf(info.g), savedAt: new Date().toISOString().slice(0, 10),
+    genome: info.g, fitness: info.fit, metres: info.dist, heading: info.heading ?? 0, generation: info.generation, settings: S };
+}
+function saveCreature(info, button) {
+  if (!zoo.some(e => sameGenome(e.genome, info.g))) { zoo.unshift(entryFor(info)); storeZoo(); drawZoo(); }
+  button.textContent = 'saved';
+}
+function drawZoo() {
+  $('zoocount').textContent = zoo.length ? `(${zoo.length})` : '';
+  $('zoolist').replaceChildren(...zoo.map(e => {
+    const li = document.createElement('li');
+    if (shownSaved?.id === e.id) li.className = 'shown';
+    li.innerHTML = '<b></b><small></small><span class="acts"></span>';
+    li.children[0].textContent = e.name;
+    li.children[0].title = e.name;
+    li.children[1].textContent = (typeof e.fitness === 'number' ? 'fitness ' + e.fitness.toFixed(2) + ', ' : '') + (e.savedAt ?? '');
+    const act = (label, fn) => {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'act', textContent: label });
+      b.addEventListener('click', fn);
+      li.children[2].append(b);
+      return b;
+    };
+    act(shownSaved?.id === e.id ? 'hide' : 'show', () => { shownSaved = shownSaved?.id === e.id ? null : e; startRace(); drawZoo(); });
+    act('seed', ev => { seedGenome(e.genome); ev.currentTarget.textContent = 'seeded'; });
+    act('rename', () => {
+      const input = Object.assign(document.createElement('input'), { value: e.name, maxLength: 40 });
+      li.children[0].replaceWith(input);
+      input.focus(); input.select();
+      const done = keep => { if (keep && input.value.trim()) { e.name = input.value.trim(); storeZoo(); if (shownSaved?.id === e.id) startRace(); } drawZoo(); };
+      input.addEventListener('keydown', k => { if (k.key === 'Enter') done(true); if (k.key === 'Escape') done(false); });
+      input.addEventListener('blur', () => done(true));
+    });
+    twoClicks(act('delete', () => {}), () => {
+      zoo = zoo.filter(x => x.id !== e.id); storeZoo();
+      if (shownSaved?.id === e.id) { shownSaved = null; startRace(); }
+      drawZoo();
+    }, 'delete?');
+    return li;
+  }));
+}
+$('export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ format: 'evolvedCreatures', version: 1, creatures: zoo }, null, 1)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `Evolved Creatures ${new Date().toISOString().slice(0, 10)}.json` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('import').addEventListener('click', () => $('importfile').click());
+$('importfile').addEventListener('change', async ev => {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  let added = 0, skipped = 0;
+  try {
+    const data = JSON.parse(await file.text());
+    for (const e of Array.isArray(data?.creatures) ? data.creatures : []) {
+      const genome = importGenome(e?.genome);
+      if (!genome || zoo.some(x => sameGenome(x.genome, genome))) { skipped++; continue; }
+      const num = v => typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+      zoo.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: (typeof e.name === 'string' && e.name.trim().slice(0, 40)) || nameOf(genome),
+        savedAt: typeof e.savedAt === 'string' ? e.savedAt.slice(0, 10) : '', genome, fitness: num(e.fitness), metres: num(e.metres), heading: num(e.heading) ?? 0,
+        generation: num(e.generation), settings: cleanSettings(e.settings ?? {}) });
+      added++;
+    }
+    $('zoomsg').textContent = `Imported ${added}` + (skipped ? `, skipped ${skipped}.` : '.');
+  } catch (err) { $('zoomsg').textContent = 'Not a creature file.'; }
+  storeZoo(); drawZoo();
+});
+drawZoo();
+
+// ---- Dashboard
+// Einstellungen: ein Regler pro Eintrag in SPEC. Geändert wird erst mit «Apply».
+const fmt = (o, v) => typeof o.def === 'boolean' ? '' : o.key === 'reseed' && v >= NEVER ? 'never'
+  : o.unit === '%' ? Math.round(v * 100) + ' %' : o.unit ? v + ' ' + o.unit : String(v);
+// Erklärung pro Regler, nach dem Muster von Plotter/ContourDrawing: ein Popover links neben dem
+// Fragezeichen. Auch per Tastatur (Fokus), nicht nur mit der Maus.
+function helpButton(o) {
+  const b = Object.assign(document.createElement('button'), { type: 'button', className: 'help', textContent: '?' });
+  b.setAttribute('aria-label', 'About ' + o.label);
+  const show = () => {
+    const pop = $('helpPop');
+    if (pop.matches(':popover-open')) pop.hidePopover();
+    $('helpTitle').textContent = o.label;
+    $('helpText').textContent = o.help;
+    pop.showPopover();
+    const r = b.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+    pop.style.left = (r.left - pr.width - 8 >= 8 ? r.left - pr.width - 8 : Math.min(innerWidth - pr.width - 8, r.right + 8)) + 'px';
+    pop.style.top = Math.max(8, Math.min(innerHeight - pr.height - 8, r.top + r.height / 2 - pr.height / 2)) + 'px';
+  };
+  const hide = () => { if ($('helpPop').matches(':popover-open')) $('helpPop').hidePopover(); };
+  b.addEventListener('mouseenter', show); b.addEventListener('focus', show);
+  b.addEventListener('mouseleave', hide); b.addEventListener('blur', hide);
+  b.addEventListener('click', e => e.preventDefault());   // im Label sonst: Checkbox umschalten
+  return b;
+}
+for (const h of document.querySelectorAll(':is(#panel, #netpanel) [data-help]')) h.append(helpButton({ label: h.textContent, help: h.dataset.help }));
+$('viewhelp').append(helpButton({ label: 'Controls', help: $('viewhelp').dataset.help }));
+$('statusline').append(helpButton({ label: 'Islands', get help() {
+  return `${ISLANDS} independent populations of ${POP} creatures take turns, one generation each. The best ${KEEP} of each survive. `
+    + `The numbers are the best fitness each island has reached; the champion comes from the best one. Islands restarted so far: ${reseeds}.`;
+} }));
+
+// Pause hält Evolution und Wiedergabe an; die Kamera lässt sich weiter drehen.
+let paused = false;
+$('pause').addEventListener('click', () => {
+  paused = !paused;
+  $('pause').textContent = paused ? 'Resume' : 'Pause';
+  $('pause').setAttribute('aria-pressed', paused);
+  rateAt = lastGenAt = performance.now(); rateGen = generation;   // Pausenzeit zählt weder in die Rate noch in die Dauer einer Generation
+});
+const inputs = {};
+for (const group of new Set(SPEC.map(o => o.group))) {
+  const fs = document.createElement('fieldset');
+  fs.append(Object.assign(document.createElement('legend'), { textContent: group }));
+  for (const o of SPEC.filter(o => o.group === group)) {
+    const label = document.createElement('label'), input = document.createElement('input');
+    label.className = typeof o.def === 'boolean' ? 'set chk' : 'set';
+    const name = document.createElement('span');
+    name.append(o.label, helpButton(o));
+    if (typeof o.def === 'boolean') {
+      input.type = 'checkbox';
+      label.append(input, name);
+    } else {
+      Object.assign(input, { type: 'range', min: o.min, max: o.max, step: o.step });
+      const slider = document.createElement('span');
+      slider.className = 'slider';
+      slider.innerHTML = '<span class="track"></span><span class="ghost" aria-hidden="true"></span>';
+      slider.append(input);
+      label.append(name, document.createElement('output'), slider);
+    }
+    inputs[o.key] = input;
+    fs.append(label);
+  }
+  $('controls').append(fs);
+}
+const readInputs = () => cleanSettings(Object.fromEntries(SPEC.map(o => [o.key, typeof o.def === 'boolean' ? inputs[o.key].checked : inputs[o.key].value])));
+function showInputs() {
+  inputs.keep.max = Math.floor(inputs.pop.value / 2);    // höchstens die Hälfte überlebt
+  const s = readInputs();
+  for (const o of SPEC) {
+    const out = inputs[o.key].closest('label').querySelector('output');
+    if (!out) continue;
+    out.textContent = fmt(o, s[o.key]);
+    // Ghost am Standardwert. Bei keep hängt der Bereich an pop, darum immer mit dem aktuellen max.
+    const i = inputs[o.key], span = (i.max - i.min) || 1, frac = v => Math.min(1, Math.max(0, (v - i.min) / span));
+    i.parentElement.style.setProperty('--v', frac(s[o.key]));
+    i.parentElement.style.setProperty('--d', frac(o.def));
+    i.title = 'default ' + fmt(o, o.def);
+  }
+  // ponytail: Schätzung aus einer Messung bei den Standardwerten (rund 110 pro Minute, 24 neue
+  // Kreaturen à 8 s). Glieder und Rechner ändern das; genauer wäre eine Messung pro Einstellung.
+  const perMin = 110 * (24 * 8) / (Math.max(1, s.pop - s.keep) * (SETTLE + (s.course ? 10 : 1) * s.trial));
+  $('estimate').textContent = `about ${Math.round(perMin)} generations per minute`;
+  $('apply').disabled = JSON.stringify(s) === JSON.stringify(S);
+}
+function setInputs(s) {
+  for (const o of SPEC) if (typeof o.def === 'boolean') inputs[o.key].checked = s[o.key];
+  inputs.pop.value = s.pop; inputs.keep.max = Math.floor(s.pop / 2);
+  for (const o of SPEC) if (typeof o.def !== 'boolean') inputs[o.key].value = s[o.key];
+  showInputs();
+}
+$('controls').addEventListener('input', showInputs);
+$('defaults').addEventListener('click', () => setInputs(cleanSettings({})));
+// Zufällige Werte, gleichverteilt über die Stufen jedes Reglers. Wie Defaults: angewendet wird erst mit Apply.
+$('randomize').addEventListener('click', () => setInputs(cleanSettings(Object.fromEntries(SPEC.map(o =>
+  [o.key, typeof o.def === 'boolean' ? Math.random() < 0.5 : o.min + rnd(Math.round((o.max - o.min) / o.step) + 1) * o.step])))));
+twoClicks($('apply'), () => restartWith(readInputs()));
+setInputs(S);
+// Ob der Abschnitt offen ist, gilt pro Browser; nach Apply soll er offen bleiben.
+try { $('settings').open = localStorage.getItem('evolvedCreatures.settingsOpen') === 'open'; } catch (e) { /* zu */ }
+$('settings').addEventListener('toggle', () => { try { localStorage.setItem('evolvedCreatures.settingsOpen', $('settings').open ? 'open' : 'closed'); } catch (e) { /* egal */ } });
+
+// Ein- und ausklappen. Der Zustand ist eine Bequemlichkeit pro Browser und liegt getrennt vom Lauf.
+const PANEL = 'evolvedCreatures.panel';
+function setPanel(open) {
+  $('panel').hidden = !open;
+  $('ptoggle').innerHTML = open ? '&rsaquo;' : '&lsaquo;';
+  $('ptoggle').setAttribute('aria-expanded', open);
+  try { localStorage.setItem(PANEL, open ? 'open' : 'closed'); } catch (e) { /* gesperrt: gilt dann nur bis zum Reload */ }
+  if (open && race.length) { drawTiles(); drawFitness(); }
+}
+$('ptoggle').addEventListener('click', () => setPanel($('panel').hidden));
+const NETPANEL = 'evolvedCreatures.netpanel';
+function setNetPanel(open) {
+  $('netpanel').hidden = !open;
+  $('ntoggle').innerHTML = open ? '&lsaquo;' : '&rsaquo;';
+  $('ntoggle').setAttribute('aria-expanded', open);
+  try { localStorage.setItem(NETPANEL, open ? 'open' : 'closed'); } catch (e) { /* gilt dann nur bis zum Reload */ }
+}
+$('ntoggle').addEventListener('click', () => setNetPanel($('netpanel').hidden));
+try { if (localStorage.getItem(NETPANEL) === 'closed') setNetPanel(false); } catch (e) { /* bleibt offen */ }
+// Ohne Netz gibt es links nichts zu zeigen: Panel und Knopf verschwinden, der gemerkte Zustand bleibt.
+if (!S.net) $('netpanel').hidden = $('ntoggle').hidden = true;
+try { if (localStorage.getItem(PANEL) === 'closed') setPanel(false); } catch (e) { /* bleibt offen */ }
+
+// Angezeigt werden Meter pro 10 s, hochgerechnet aus der gewerteten Strecke von TRIAL Sekunden.
+const per10 = d => (S.jump && !S.course ? d : d * 10 / TRIAL).toFixed(2);   // beim Springen: Höhe in m
+if (S.jump && !S.course) Object.assign($('s-dist').previousElementSibling, { textContent: 'champion, jump m' })
+  .dataset.help = 'Greatest height of the champion\'s lowest point above the floor, without the upright factor.';
+function canvasFor(id, cssHeight) {
+  const cv = $(id), dpr = Math.min(devicePixelRatio, 2), w = cv.clientWidth;
+  if (cv.width !== w * dpr || cv.height !== cssHeight * dpr) { cv.width = w * dpr; cv.height = cssHeight * dpr; cv.style.height = cssHeight + 'px'; }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, cssHeight);
+  ctx.font = '10px ' + token('--mono');
+  return [ctx, w];
+}
+
+// Fitnesskurve: eine Achse, beste und mittlere Fitness. Pro Pixelspalte ein Punkt
+// (Maximum bzw. Mittel der Generationen darin), damit auch 10'000 Generationen passen.
+let hover = null;
+function drawFitness() {
+  const H = 120, L = 26, T = 8, B = 16, [ctx, W] = canvasFor('fit', H);
+  const n = history.length, pw = W - L - 4, ph = H - T - B;
+  const top = Math.max(1, Math.ceil(Math.max(0, ...history.map(h => h[0]))));
+  const X = i => L + (n > 1 ? i / (n - 1) : 0) * pw, Y = v => T + ph - v / top * ph;
+  ctx.lineWidth = 1; ctx.strokeStyle = token('--rule'); ctx.fillStyle = token('--ink-2');
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (const v of [0, top / 2, top]) {
+    ctx.beginPath(); ctx.moveTo(L, Y(v) + 0.5); ctx.lineTo(L + pw, Y(v) + 0.5); ctx.stroke();
+    ctx.fillText(v, L - 5, Y(v));
+  }
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left'; ctx.fillText('1', L, H - 3);
+  ctx.textAlign = 'right'; ctx.fillText(Math.max(n, 1), L + pw, H - 3);
+  if (!n) return;
+  ctx.strokeStyle = token('--ink-2');
+  for (const g of ghosts) { ctx.beginPath(); ctx.moveTo(X(g.generation) + 0.5, T - 6); ctx.lineTo(X(g.generation) + 0.5, T); ctx.stroke(); }
+  const cols = Math.max(1, Math.min(n, Math.floor(pw)));
+  [[1, '--mean', 1.5], [0, '--best', 2]].forEach(([k, color, width]) => {
+    ctx.beginPath();
+    for (let c = 0; c < cols; c++) {
+      const a = Math.floor(c * n / cols), b = Math.max(a + 1, Math.floor((c + 1) * n / cols)), part = history.slice(a, b).map(h => h[k]);
+      const v = k ? part.reduce((s, x) => s + x, 0) / part.length : Math.max(...part);
+      ctx.lineTo(X(n > 1 ? (a + b - 1) / 2 : 0), Y(v));
+    }
+    ctx.strokeStyle = token(color); ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.stroke();
+  });
+  if (hover !== null) {
+    const i = Math.max(0, Math.min(n - 1, Math.round((hover - L) / pw * (n - 1))));
+    ctx.strokeStyle = token('--ink'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X(i) + 0.5, T); ctx.lineTo(X(i) + 0.5, T + ph); ctx.stroke();
+    $('f-read').textContent = `gen ${i + 1}: ${history[i][0].toFixed(2)} / ${history[i][1].toFixed(2)}`;
+  } else $('f-read').textContent = '';
+}
+$('fit').addEventListener('pointermove', e => { hover = e.offsetX; drawFitness(); });
+$('fit').addEventListener('pointerleave', () => { hover = null; drawFitness(); });
+
+// Genotyp-Graph wie Figur 1 bei Sims: Knoten in einer Reihe, Selbstverbindungen als Schlaufe
+// oben, Verbindungen nach rechts als Bogen oben, nach links als Bogen unten.
+function drawGenotype(G, c) {
+  const used = new Set(c.nodes), y = 70, r = 15, x = i => 39 + i * 70, seen = {};
+  const ink = token('--ink'), surface = token('--surface');
+  let out = `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 1 L10 5 L0 9 z" fill="${ink}"/></marker>`
+    + `<marker id="arrow-wide" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 z" fill="${ink}"/></marker></defs>`;
+  G.nodes.forEach((node, i) => node.conns.forEach(conn => {
+    const j = conn.to, k = seen[i + '>' + j] = (seen[i + '>' + j] ?? -1) + 1;
+    let d;
+    if (i === j) d = `M${x(i) - 8} ${y - 13} C${x(i) - 24} ${y - 46 - k * 11} ${x(i) + 24} ${y - 46 - k * 11} ${x(i) + 9} ${y - 14}`;
+    else {
+      const s = i < j ? -1 : 1, bend = (10 + Math.abs(i - j) * 8 + k * 7) * 2;
+      d = `M${x(i) - s * 5} ${y + s * r} Q${(x(i) + x(j)) / 2} ${y + s * (r + bend)} ${x(j) + s * 5} ${y + s * (r + 1)}`;
+    }
+    const o = used.has(i) && used.has(j) ? 1 : 0.25, dash = conn.terminal ? ' stroke-dasharray="4 3"' : '';
+    // Doppellinie = breite Linie, darüber eine schmale in der Flächenfarbe. Die Pfeilspitze kommt
+    // als dritter Pfad obendrauf und ist grösser, sonst verschwindet sie in der breiten Linie.
+    out += conn.mirror
+      ? `<g fill="none" opacity="${o}"><path d="${d}" stroke="${ink}" stroke-width="4"${dash}/><path d="${d}" stroke="${surface}" stroke-width="1.5"/><path d="${d}" marker-end="url(#arrow-wide)"/></g>`
+      : `<path d="${d}" fill="none" stroke="${ink}" stroke-width="1.5" opacity="${o}"${dash} marker-end="url(#arrow)"/>`;
+  }));
+  G.nodes.forEach((node, i) => {
+    const o = used.has(i) ? 1 : 0.25;
+    out += `<circle cx="${x(i)}" cy="${y}" r="${r}" fill="${NODE[i]}" stroke="${surface}" stroke-width="2" opacity="${o}"/>`
+      + `<text x="${x(i)}" y="148" opacity="${o}">${i ? '' : 'root '}×${node.recur}</text>`;
+  });
+  $('geno').innerHTML = out;
+}
+
+// Netz des Champions: ein Diagramm pro Gliedsorte mit Gelenken. Aufgebaut wird es einmal pro
+// Durchlauf (Gewichte), jedes Frame ändern sich nur die Füllungen (Aktivierungen).
+let netViews = [];
+function buildNets() {
+  const c = race[0].c, ink = token('--w-pos'), neg = token('--w-neg'), grey = token('--mean');
+  const IX = 78, HX = 170, OX = 248, iy = a => 14 + a * 22, hy = k => 36 + k * 33, OY = 69, R = 7;
+  netViews = [];
+  $('nets').replaceChildren();
+  if (!S.net) return;
+  for (const type of [...new Set(c.joints.map(j => j.node))].sort()) {
+    const first = c.joints.findIndex(j => j.node === type), j = c.joints[first], w = j.w;
+    const count = c.joints.filter(j => j.node === type).length;
+    const edge = (d, v, extra = '') => `<path d="${d}" fill="none" stroke="${v < 0 ? neg : ink}" stroke-width="${(0.4 + 1.3 * Math.abs(v)).toFixed(2)}" opacity="0.75"${v < 0 ? ' stroke-dasharray="3 2"' : ''}${extra}/>`;
+    let svg = '';
+    for (let k = 0; k < NH; k++) for (let a = 0; a < NI; a++) svg += edge(`M${IX + R} ${iy(a)} L${HX - R} ${hy(k)}`, w[k * NI + a]);
+    for (let k = 0; k < NH; k++) {
+      svg += edge(`M${HX - 4} ${hy(k) - 6} C${HX - 16} ${hy(k) - 24} ${HX + 16} ${hy(k) - 24} ${HX + 4} ${hy(k) - 6}`, w[NH * NI + k]);
+      svg += edge(`M${HX + R} ${hy(k)} L${OX - R} ${OY}`, w[NH * NI + NH + k]);
+    }
+    svg += `<path d="M${IX + R} ${iy(4)} Q${HX} 150 ${OX - 4} ${OY + 6}" fill="none" stroke="${grey}" stroke-width="${(0.4 + 1.3 * j.amp).toFixed(2)}" stroke-dasharray="2 3"/>`;
+    const node = (x, y, id) => `<circle cx="${x}" cy="${y}" r="${R}" fill="${token('--surface')}" stroke="${token('--ink-2')}"/><circle class="${id}" cx="${x}" cy="${y}" r="${R - 1}" fill="${ink}" fill-opacity="0"/>`;
+    INPUTS.forEach((label, a) => { svg += node(IX, iy(a), 'a') + `<text x="${IX - 12}" y="${iy(a) + 4}" text-anchor="end">${label}</text>`; });
+    for (let k = 0; k < NH; k++) svg += node(HX, hy(k), 'a');
+    svg += node(OX, OY, 'a') + `<text x="${OX}" y="${OY + 24}" text-anchor="middle">target</text>`;
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h2><i class="chip" style="background:${NODE[type]}"></i>limb type ${type + 1}, ${count} joint${count > 1 ? 's' : ''}</h2>`
+      + `<svg class="net" viewBox="0 0 288 156" role="img" aria-label="Network of limb type ${type + 1}">${svg}</svg>`;
+    $('nets').append(sec);
+    netViews.push({ joint: first, dots: [...sec.querySelectorAll('circle.a')] });
+  }
+}
+function drawNets() {
+  const c = race[0].c, ink = token('--w-pos'), neg = token('--w-neg');
+  for (const { joint, dots } of netViews) {
+    const vals = [...c.x.subarray(joint * NI, joint * NI + NI), ...c.h.subarray(joint * NH, joint * NH + NH), c.u[joint]];
+    dots.forEach((dot, n) => {
+      dot.setAttribute('fill', vals[n] < 0 ? neg : ink);
+      dot.setAttribute('fill-opacity', Math.min(1, Math.abs(vals[n])).toFixed(2));
+    });
+  }
+}
+
+// Gelenkwinkel: eine Zeile pro Gelenk, Soll (dünn, grau) und Ist (Farbe des Glieds),
+// beide auf den Gelenkbereich normiert.
+function drawTraces() {
+  const ROW = 20, joints = race[0].c.joints, [ctx, W] = canvasFor('osc', Math.max(1, joints.length) * ROW);
+  joints.forEach((j, i) => {
+    const mid = i * ROW + ROW / 2, t = traces[i];
+    ctx.strokeStyle = token('--rule'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, mid + 0.5); ctx.lineTo(W, mid + 0.5); ctx.stroke();
+    [[0, token('--mean'), 1], [1, NODE[j.node], 2]].forEach(([k, color, width]) => {
+      ctx.beginPath();
+      t.forEach((v, n) => ctx.lineTo(W - (t.length - 1 - n) * W / HISTORY, mid - v[k] * (ROW / 2 - 3)));
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.stroke();
+    });
+  });
+}
+
+
+function drawTiles() {
+  const last = history.at(-1);
+  $('s-gen').textContent = generation;
+  $('s-best').textContent = (last ? last[0] : 0).toFixed(2);
+  $('s-mean').textContent = (last ? last[1] : 0).toFixed(2);
+  const d = champion?.dist;                    // fehlt in Speicherständen von vor dieser Kennzahl
+  $('s-dist').textContent = d === undefined ? '–' : per10(d);
+  $('status').textContent = !champion ? 'first generation'
+    : `best per island: ${islands.map(i => i.top ? i.top.fit.toFixed(2) : 'new').join(', ')}`;
+}
+
+// ---- Tastatur, nach dem Muster des Bitcoin-Visualizers: gehaltene Tasten wirken pro Frame,
+// damit die Bewegung flüssig ist. W/A/S/D verschieben die Ansicht, R setzt sie
+// zurück, H klappt die Panels, Leertaste pausiert. Nicht in Feldern und auf Knöpfen, sonst
+// löste die Leertaste dort zusätzlich einen Klick aus.
+const held = new Set(), tapped = new Set();   // tapped: kurz gedrückt, wirkt einmal
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || /^(input|textarea|select|button|summary)$/i.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if ('wasd'.includes(k) && k.length === 1) { held.add(k); tapped.add(k); return; }
+  if (k === 'r') { pan.set(0, 0, 0); camera.position.copy(focus).add(CAMERA0); return; }
+  if (k === 'h') {
+    const open = $('panel').hidden && (!S.net || $('netpanel').hidden);
+    setPanel(open);
+    if (S.net) setNetPanel(open);
+    return;
+  }
+  if (k === ' ') { e.preventDefault(); $('pause').click(); }
+});
+addEventListener('keyup', e => held.delete(e.key.toLowerCase()));
+addEventListener('blur', () => held.clear());   // Fensterwechsel: sonst bliebe eine Taste hängen
+function steerCamera() {
+  if (!held.size && !tapped.size) return;
+  const on = k => held.has(k) || tapped.has(k);
+  tapped.clear();
+  // W/S fahren in Blickrichtung flach über den Boden, A/D seitlich. Verschoben wird der Versatz `pan` zum
+  // Champion: die Kamera folgt ihm weiter, nur mit Abstand, etwa um vor ihm aufs nächste Hindernis zu schauen.
+  camera.getWorldDirection(v3); v3.z = 0; v3.normalize().multiplyScalar(0.05);   // 5 cm pro Frame, etwa 3 m/s
+  if (on('w')) pan.add(v3);
+  if (on('s')) pan.sub(v3);
+  v3.set(v3.y, -v3.x, 0);                          // rechts von der Blickrichtung
+  if (on('d')) pan.add(v3);
+  if (on('a')) pan.sub(v3);
+}
+
+// ---- Bewertung in Web Workern. Im Hauptthread reichte es nur für 8 ms pro Frame, also höchstens einen halben
+// Kern. Jeder Worker lädt MuJoCo selbst und führt den Kern aus: Er steht als Text in diesem Skript, zwischen
+// denselben Markern, die auch scripts/night_run.mjs ausschneidet. Ein Worker bewertet eine Kreatur am Stück
+// (`evaluate`), die Seite verteilt die offenen Kreaturen der Insel, die an der Reihe ist, und schliesst die
+// Generation ab, sobald alle zurück sind. Die Physik ist deterministisch, das Ergebnis also dasselbe wie im
+// Hauptthread. Solange kein Worker bereit ist, oder wenn keiner startet, rechnet der Hauptthread wie bisher.
+const sent = new WeakSet(), idle = [];   // verschickte Kreaturen (nicht im Speicherstand), freie Worker
+let pool = 0;                            // bereite Worker
+function pump() {
+  // Ein verborgener Tab rechnet nicht weiter, wie bisher: gespeichert wird nur in `frame`.
+  while (pool && !paused && !document.hidden) {
+    const open = islands[turn].pop.filter(p => p.fit === undefined);
+    if (!open.length) { closeGeneration(); continue; }
+    for (const p of open) if (!sent.has(p)) {
+      const w = idle.pop();
+      if (!w) return;
+      sent.add(p); w.creature = p; w.postMessage(p.g);
+    }
+    return;
+  }
+}
+try {
+  const core = document.querySelector('script[type=module]').textContent.split('//<' + 'core>')[1].split('//</' + 'core>')[0];
+  // Klassischer Worker mit einer async-Funktion um alles: Modul-Worker aus Blob-URLs verweigert Chrome unter file://.
+  const source = `(async () => {
+const init = await new Promise(r => { onmessage = e => r(e.data); });
+const SETTINGS_RAW = init.settings;
+const mujoco = await (await import(init.code ? URL.createObjectURL(new Blob([init.code], { type: 'text/javascript' })) : init.url)).default(init.wasm ? { wasmBinary: init.wasm, locateFile: file => file } : undefined);
+//` + core + `
+onmessage = e => postMessage(evaluate(e.data));
+postMessage('ready');
+})().catch(() => close());`;
+  const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+  // Offline-Fassung: mujoco.js ist dort eine Blob-URL der Seite, und die darf ein Worker unter file:// nicht
+  // laden (anderer Ursprung). Darum bekommt er den Text und macht daraus seine eigene Blob-URL.
+  const lib = import.meta.resolve('mujoco'), code = lib.startsWith('blob:') ? await (await fetch(lib)).text() : undefined;
+  // Zwei Kerne bleiben für Anzeige und System, höchstens 8 Worker.
+  for (let i = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 2) - 2)); i > 0; i--) {
+    const w = new Worker(url);
+    w.onmessage = e => {
+      if (e.data === 'ready') {
+        w.ready = true;
+        // Der erste bereite Worker löst den Hauptthread ab; dessen angefangene Bewertung verfällt.
+        if (!pool++ && job) { if (job.c) free(job.c); job = null; }
+      } else {
+        const { end, ...res } = e.data;
+        Object.assign(w.creature, res);
+        if (end) { ENDS.push(end); if (ENDS.length > 3000) ENDS.shift(); }
+      }
+      idle.push(w); pump();
+    };
+    // Ein Worker, der nicht startet oder abstürzt, fällt weg; seine Kreatur geht an einen anderen.
+    w.onerror = () => {
+      w.terminate();
+      if (w.ready) pool--;
+      w.ready = false;
+      if (idle.includes(w)) idle.splice(idle.indexOf(w), 1);
+      if (w.creature?.fit === undefined && w.creature) sent.delete(w.creature);
+      pump();
+    };
+    w.postMessage({ settings: S, url: lib, code, wasm: window.MUJOCO_WASM });
+  }
+} catch (e) { /* keine Worker: der Hauptthread rechnet */ }
+
+// ---- Hauptschleife
+startRace(); drawTiles(); drawFitness();
+let last = performance.now(), rateAt = last, rateGen = generation;
+const focus = new THREE.Vector3(0, 0, 0.4), v3 = new THREE.Vector3(), pan = new THREE.Vector3();
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (pool) pump(); else if (!paused) evolveStep(8);
+  if (generation !== savedGeneration && !restarting) {
+    savedGeneration = generation;
+    // ponytail: schreibt jede Generation den ganzen Stand. Bei sehr langen Läufen history ausdünnen.
+    try { localStorage.setItem(STORE, JSON.stringify({ settings: S, islands, turn, reseeds, generation, champion, ghosts, history, events, startedAt,
+      ends: ENDS.map(([x, y, k]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100, k]) })); } catch (e) { /* Speicher voll oder gesperrt */ }
+    if (!$('panel').hidden) { drawTiles(); drawFitness(); drawEnds(); }
+  }
+  if (!paused && now - rateAt > 5000) {
+    $('s-rate').textContent = Math.round((generation - rateGen) / (now - rateAt) * 60000);
+    rateAt = now; rateGen = generation;
+  }
+
+  // Alle laufen in Echtzeit und im Gleichschritt; nach einem Durchlauf neu aufstellen.
+  // Neu aufstellen: Durchlauf um, keine Figur läuft mehr, oder es gibt einen neuen Champion und das Rennen
+  // ist mindestens 15 s alt. Ohne die Frist sähe man am Anfang eines Laufs nur Starts. Hat die gezeigte
+  // Kreatur auf dem Parcours das erste Hindernis hinter sich, läuft sie zu Ende.
+  const restarted = race.every(r => r.out || r.c.step >= N) || (champion && race[0].info !== champion && race[0].c.step >= 15 / DT
+    && !(S.course && race[0].c.data.subtree_com[3] > COURSE.legs[0].x1));
+  if (restarted) { reach = race[0].c.data.subtree_com[3]; startRace(); }
+  const steps = paused ? 0 : Math.min(10, Math.round((now - last) / 1000 / DT), N - race[0].c.step);
+  last = now;
+  // Auf dem Parcours gilt dieselbe Regel wie in der Bewertung (alle 50 Schritte ab Messbeginn): Wo die
+  // Wertung endet, bleibt die Kreatur stehen, ausser am Ziel blass wie der älteste Ghost.
+  for (const r of race) {
+    let n = steps;
+    while (n > 0 && !r.out) {
+      const k = Math.min(n, 50 - r.c.step % 50);
+      advance(r.c, k); n -= k;
+      if (S.course && r.c.step >= N0 && r.c.step % 50 === 0 && courseCheck(r.job ??= {}, r.c.data.subtree_com[3], r.c.data.subtree_com[4], r.c.step)) {
+        r.out = true;
+        if (!r.job.bonus) r.meshes.forEach((mesh, i) => { mesh.material = material(r.c.nodes[i], 3); mesh.castShadow = false; });
+      }
+    }
+    if (r.out) r.c.step += n;   // die Uhr läuft weiter, damit das Rennen neu startet
+  }
+
+  for (const r of race) {
+    const p = r.c.data.geom_xpos, m = r.c.data.geom_xmat;
+    r.meshes.forEach((mesh, n) => {
+      const i = n + 1;
+      mesh.matrix.set(
+        m[i * 9], m[i * 9 + 1], m[i * 9 + 2], p[i * 3],
+        m[i * 9 + 3], m[i * 9 + 4], m[i * 9 + 5], p[i * 3 + 1],
+        m[i * 9 + 6], m[i * 9 + 7], m[i * 9 + 8], p[i * 3 + 2],
+        0, 0, 0, 1);
+    });
+    // Solange das Modell noch keine Kugeln hat (late), liegen sie an ihrem Startplatz.
+    r.balls.forEach((m, k) => { const i = r.c.limbs + 1 + COURSE_XML.ballGeom + k, b = COURSE_XML.balls[k]; r.c.late ? m.position.set(b[0], b[1], b[2]) : m.position.set(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]); });
+    if (S.course) { r.mark.setAttribute('x', TX(r.c.data.subtree_com[3]) - 3); r.mark.setAttribute('y', TY(r.c.data.subtree_com[4]) - 3); }
+  }
+
+  const [x, y] = com(race[0]);
+  camera.position.sub(focus);                       // Kamera wandert mit dem Ziel mit
+  v3.set(x, y, 0.4).add(pan);
+  if (restarted) focus.copy(v3); else focus.lerp(v3, 0.15);   // Champion in der Bildmitte; beim Neustart springen statt zurückfliegen
+  camera.position.add(focus);
+  steerCamera();
+  controls.target.copy(focus);
+  controls.update();
+  sky.position.copy(camera.position);
+  sun.position.set(focus.x + 3, focus.y - 4, 9);
+  sun.target.position.copy(focus);
+  renderer.render(scene, camera);
+
+  // Schildchen über jeder Kreatur. Überdeckt eines ein bereits gesetztes, rutscht es nach oben;
+  // der Champion kommt zuerst und bleibt an seinem Platz.
+  const w = view.clientWidth, h = view.clientHeight, placed = [];
+  for (const r of race) {
+    const [cx, cy, cz] = com(r);
+    v3.set(cx, cy, cz + 0.6).project(camera);
+    const { tw, th } = r, x = (v3.x + 1) / 2 * w - tw / 2;
+    let y = (1 - v3.y) / 2 * h - th;
+    for (let hit = true; hit;) {
+      hit = false;
+      for (const p of placed) if (x < p.x + p.w && p.x < x + tw && y < p.y + th && p.y < y + th) { y = p.y - th; hit = true; }
+    }
+    placed.push({ x, y, w: tw });
+    r.tag.style.transform = `translate(${x}px, ${y}px)`;
+  }
+
+  // Dashboard: Gelenkkurven jedes Frame.
+  const c = race[0].c, q = c.data.qpos, ctrl = c.data.ctrl;
+  if (!paused) c.joints.forEach((j, i) => {
+    traces[i].push([ctrl[i] / j.range, q[7 + i] / j.range]);
+    if (traces[i].length > HISTORY) traces[i].shift();
+  });
+  if (!$('panel').hidden) drawTraces();
+  if (!$('netpanel').hidden) drawNets();
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

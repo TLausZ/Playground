@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evolved Creatures Course</title>
+<style>
+  /* Tokens aus DESIGN.md */
+  :root {
+    --sky: #5BB8F5;
+    --horizon: #D9EEFB;
+    --floor-light: #FBF8F0;
+    --floor-dark: #E2DACA;
+    --surface: #FCFBF7;
+    --ink: #26251F;
+    --ink-2: #5E5B52;
+    --coral-side: #E2614D;   /* Streifen der Slalomstangen */
+    /* Ein Farbpaar pro Hindernis: Grundkörper in der Farbe des Hindernisses, Lauffläche leuchtend in der Farbe des nächsten. Keine Knotenfarbe, damit Glieder sich abheben. */
+    --bumps-top: #B79BFF;     --bumps-side: #FF8A6B;
+    --bars-top: #FF77B4;      --bars-side: #B79BFF;
+    --balls-top: #C9F25A;     --balls-side: #FF77B4;
+    --wedges-top: #5EE3E8;    --wedges-side: #C9F25A;
+    --staircase-top: #FF8A6B; --staircase-side: #5EE3E8;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--horizon); color: var(--ink); font: 13px/1.45 system-ui, -apple-system, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  #legs { position: absolute; top: 12px; left: 12px; margin: 0; padding: 8px 0; list-style: none; background: var(--surface); border: 1px solid var(--ink-2); border-radius: 4px; }
+  #legs button { display: block; width: 100%; padding: 2px 12px; border: 0; background: none; color: var(--ink); font: 12px var(--mono); text-align: left; cursor: pointer; }
+  #legs button:hover, #legs button.on { background: var(--ink); color: var(--surface); }
+  #fly { position: absolute; top: 12px; right: 12px; padding: 4px 12px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink); font: 13px system-ui, sans-serif; cursor: pointer; }
+  #fly:hover, #fly[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  #help { position: absolute; left: 12px; bottom: 12px; width: 22px; height: 22px; border: 1px solid var(--ink-2); border-radius: 50%; background: var(--surface); color: var(--ink-2); font: 12px/20px system-ui, sans-serif; text-align: center; cursor: help; }
+  #help span { display: none; position: absolute; left: 0; bottom: 30px; width: 260px; padding: 12px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); text-align: left; line-height: 1.4; }
+  #help:hover span, #help:focus span { display: block; }
+</style>
+</head>
+<body>
+<ol id="legs"></ol>
+<button id="fly" type="button" aria-pressed="false">Fly</button>
+<div id="help" tabindex="0">?<span>Drag to orbit, right-drag to pan, scroll to zoom. W A S D move, Q and E down and up. Keys 0 to 7 jump to start, obstacles and finish. Fly runs the camera along the course; Space toggles it. The dashed line is the slalom path: passing a pole on the wrong side fails the run.</span></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.166.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+//<course>
+// Parcours entlang +x, Start bei x = 0, Bahn von y = -3 bis 3, z oben, Meter. Reine Daten, kein DOM:
+// index.html baut daraus die MuJoCo-Geoms und die Anzeige, course.html nur die Anzeige. Der Block steht
+// in beiden Dateien gleich.
+// Teile: { box: [x0, x1, y0, y1, z0, z1] } wird ein Quader, { pole: [x, y, r, h] } ein Zylinder,
+// { ball: [x, y, r, Dichte, schwer] } eine lose Kugel, { tilt: [x0, x1, side, h] } ein seitlich geneigter Keil, { verts } allein ein Prisma mit Profil in x-z.
+// Keil und Prisma sind konvexe Körper (MuJoCo-Mesh). Jedes Teil hat verts.
+const COURSE = (() => {
+  const W = 3, GAP = 4, LEAD = 3;   // halbe Bahnbreite, freie Bahn zwischen Hindernissen, Anlauf und Auslauf
+  const LAP = 0.5;   // so weit reicht die Treppe über die Bahnmitte: wer genau geradeaus läuft, trifft Stufen, nicht die Naht zum Block
+  const boxVerts = ([x0, x1, y0, y1, z0, z1]) => [[x0, y0, z0], [x1, y0, z0], [x0, y1, z0], [x1, y1, z0], [x0, y0, z1], [x1, y0, z1], [x0, y1, z1], [x1, y1, z1]];
+  const box = (...b) => ({ box: b, verts: boxVerts(b) });
+  const prism = profile => ({ verts: profile.flatMap(([x, z]) => [[x, -W, z], [x, W, z]]) });   // Profil in x-z über die ganze Breite
+  const stairs = (x0, n, run, rise, y0, y1, down) => Array.from({ length: n }, (_, i) =>
+    box(x0 + i * run, x0 + (i + 1) * run, y0, y1, 0, (down ? n - i : i + 1) * rise));
+  const tilt = (x0, x1, side, h) => ({ tilt: [x0, x1, side, h], verts: [x0, x1].flatMap(x => [[x, -W, 0], [x, W, 0], [x, side * W, h]]) });   // side +1: links hoch
+  const ball = (x, y, r, density, heavy) => ({ ball: [x, y, r, density, heavy], verts: boxVerts([x - r, x + r, y - r, y + r, 0, 2 * r]) });
+  const pole = (x, y, r, h) => ({ pole: [x, y, r, h], verts: boxVerts([x - r, x + r, y - r, y + r, 0, h]) });
+  const slalom = [];   // Seite je Stange: +1 links (y > 0). Falsche Seite beendet den Lauf an dieser Stange.
+  // Masse in runden Zahlen: Stufen 5 cm hoch, Längen auf 10 cm. Mit LEAD und GAP ergibt das genau 50 m.
+  const OBSTACLES = [
+    // 1. Zwei flache Buckel über die ganze Breite, je 2 m lang und 15 cm hoch.
+    { name: 'Bumps', len: 4, build: x => [0, 2].map(d => prism([[x + d, 0], [x + d + 0.4, 0.1], [x + d + 1, 0.15], [x + d + 1.6, 0.1], [x + d + 2, 0]])) },
+    // 2. Zwei tiefe Leisten zum Überspringen, 10 cm hoch, 1 m auseinander. Massiv, sonst kriechen kleine Kreaturen darunter durch.
+    { name: 'Bars', len: 1.2, build: x => [0.1, 1.1].map(c => prism([[x + c - 0.1, 0], [x + c, 0.1], [x + c + 0.1, 0]])) },
+    // 3. 48 lose Kugeln als Band quer über die ganze Bahn, 4 m lang, in der Mitte der 6 m dieses Abschnitts:
+    //    zwölf Spalten im Abstand von 50 cm, je vier Kugeln im Abstand von 80 cm, im Zickzack versetzt. Radius 10, 15
+    //    oder 20 cm, leicht oder schwer: 0,4 und 3,8 kg, 1,3 und 13 kg, die grossen 60 und 240 kg. Aussen herum
+    //    geht es nicht.
+    { name: 'Balls', len: 6, build: x => Array.from({ length: 12 }, (_, c) => [0, 1, 2, 3].map(k => {
+      const r = [0.1, 0.15, 0.2][(c + k) % 3], heavy = (c + k) % 2;
+      return ball(x + 3 + (c % 2 ? -1 : -1.4) + k * 0.8, c * 0.5 - 2.75, r, r < 0.2 ? (heavy ? 900 : 90) : heavy ? 7200 : 1800, heavy);
+    })).flat() },
+    // 4. Links 6 Stufen à 20 cm und 5 cm hinauf auf 30 cm, Plattform 1,4 m, rechts 6 Stufen hinunter.
+    //    Beide Treppen reichen 50 cm über die Mitte, der Rest daneben ist Block mit Wand.
+    { name: 'Staircase', len: 3.8, build: x => [...stairs(x, 6, 0.2, 0.05, -LAP, W, false), box(x, x + 1.2, -W, -LAP, 0, 0.3),
+      box(x + 1.2, x + 2.6, -W, W, 0, 0.3), ...stairs(x + 2.6, 6, 0.2, 0.05, -W, LAP, true), box(x + 2.6, x + 3.8, LAP, W, 0, 0.3)] },
+    // 5. Vier Keile hintereinander, je 1 m lang, seitlich geneigt über die ganze Breite: abwechselnd links und
+    //    rechts 30 cm hoch, an der anderen Seite 0. In der Bahnmitte sind alle 15 cm hoch: dort eine Stufe am
+    //    Anfang und am Ende, dazwischen wechselt nur die Neigung.
+    { name: 'Wedges', len: 4, build: x => [0, 1, 2, 3].map(i => tilt(x + i, x + i + 1, i % 2 ? -1 : 1, 0.3)) },
+    // 6. Fünf Slalomstangen, 1,25 m auseinander, 2,5 cm Radius, 50 cm hoch.
+    { name: 'Slalom', len: 5, build: x0 => [0, 1, 2, 3, 4].map(i => {
+      slalom.push({ x: x0 + i * 1.25, side: i % 2 ? -1 : 1 });
+      return pole(x0 + i * 1.25, 0, 0.025, 0.5);
+    }) },
+  ];
+  let x = LEAD;
+  const legs = OBSTACLES.map(o => { const leg = { name: o.name, x0: x, x1: x + o.len, parts: o.build(x) }; x += o.len + GAP; return leg; });
+  return { W, legs, slalom, start: 0, finish: legs.at(-1).x1 + LEAD };   // 3 + 24 + 5 · 4 + 3 = 50 m
+})();
+//</course>
+const { W, slalom: SLALOM, start: START, finish: FINISH } = COURSE;
+
+// ---- Szene wie index.html, z oben.
+const token = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(token('--horizon'), 20, 70);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 300);
+camera.up.set(0, 0, 1);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI / 2 - 0.02;
+controls.screenSpacePanning = false;
+
+const sky = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: { top: { value: new THREE.Color(token('--sky')) }, bottom: { value: new THREE.Color(token('--horizon')) } },
+  vertexShader: 'varying vec3 d; void main() { d = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 top; uniform vec3 bottom; varying vec3 d;
+    void main() { gl_FragColor = vec4(mix(bottom, top, smoothstep(0.0, 0.22, normalize(d).z)), 1.0);
+    #include <colorspace_fragment>
+    }`,
+}));
+scene.add(sky);
+scene.add(new THREE.HemisphereLight(0xffffff, token('--floor-dark'), 1.5));
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 4096);
+// Mit up = +x liegt «oben/unten» der Schattenkamera längs der Bahn, «links/rechts» quer dazu.
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 28, bottom: -28, near: 1, far: 40 });
+sun.shadow.bias = -0.0005;
+sun.position.set(FINISH / 2 - 6, -8, 14);
+sun.target.position.set(FINISH / 2, 0, 0);
+// Schattenkamera schaut schräg von oben; ihr Rechteck soll längs der Bahn liegen.
+sun.shadow.camera.up.set(1, 0, 0);
+scene.add(sun, sun.target);
+
+const tile = document.createElement('canvas');
+tile.width = tile.height = 2;
+const tctx = tile.getContext('2d');
+[[0, 0, '--floor-light'], [1, 1, '--floor-light'], [1, 0, '--floor-dark'], [0, 1, '--floor-dark']]
+  .forEach(([x, y, n]) => { tctx.fillStyle = token(n); tctx.fillRect(x, y, 1, 1); });
+const checker = new THREE.CanvasTexture(tile);
+checker.wrapS = checker.wrapT = THREE.RepeatWrapping;
+checker.repeat.set(200, 200);
+checker.magFilter = THREE.NearestFilter;
+checker.anisotropy = renderer.capabilities.getMaxAnisotropy();
+checker.colorSpace = THREE.SRGBColorSpace;
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ map: checker }));
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ---- Parcours
+// Jedes Hindernis hat sein Farbpaar. Die Laufflächen (Normalen nach oben, dort berührt die Kreatur das Hindernis)
+// leuchten leicht von selbst, die Seiten sind gedeckt. Dafür wird jeder Körper in Ober- und Seitenflächen geteilt.
+const mats = {};
+const matsFor = name => mats[name] ??= (() => {
+  const top = new THREE.Color(token(`--${name.toLowerCase()}-top`));
+  // Zwei Leuchtstärken im Wechsel, sonst verschmelzen gleich hohe Stufen von oben zu einer Fläche.
+  return { top: new THREE.MeshLambertMaterial({ color: top, emissive: top, emissiveIntensity: 0.45 }),
+    top2: new THREE.MeshLambertMaterial({ color: top, emissive: top, emissiveIntensity: 0.25 }),
+    side: new THREE.MeshLambertMaterial({ color: token(`--${name.toLowerCase()}-side`) }) };
+})();
+function split(geo) {
+  const p = geo.attributes.position.array, n = geo.attributes.normal.array, parts = { top: [[], []], side: [[], []] };
+  for (let t = 0; t < p.length; t += 9) {
+    const [pos, nor] = parts[n[t + 2] > 0.5 ? 'top' : 'side'];
+    pos.push(...p.slice(t, t + 9)); nor.push(...n.slice(t, t + 9));
+  }
+  return Object.entries(parts).filter(([, [pos]]) => pos.length).map(([k, [pos, nor]]) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    return [k, g];
+  });
+}
+// Slalomstangen: gestreift wie Torstangen, Koralle und Weiss im 10-cm-Takt.
+const stripes = document.createElement('canvas');
+stripes.width = 1; stripes.height = 5;
+const sctx = stripes.getContext('2d');
+for (let i = 0; i < 5; i++) { sctx.fillStyle = i % 2 ? token('--surface') : token('--coral-side'); sctx.fillRect(0, i, 1, 1); }
+const stripeTex = new THREE.CanvasTexture(stripes);
+stripeTex.magFilter = THREE.NearestFilter;
+stripeTex.colorSpace = THREE.SRGBColorSpace;
+const poleMat = new THREE.MeshLambertMaterial({ map: stripeTex });
+for (const leg of COURSE.legs) for (const [pi, part] of leg.parts.entries()) {
+  const meshes = part.pole
+    ? [Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 12).rotateX(Math.PI / 2), poleMat))]
+    : part.ball ? [new THREE.Mesh(new THREE.SphereGeometry(part.ball[2], 24, 16).rotateX(Math.PI / 2).translate(part.ball[0], part.ball[1], part.ball[2]), new THREE.MeshLambertMaterial({ color: token(part.ball[4] ? '--balls-side' : '--balls-top') }))]
+    : split(new ConvexGeometry(part.verts.map(v => new THREE.Vector3(...v)))).map(([k, g]) => new THREE.Mesh(g, matsFor(leg.name)[k === 'top' && pi % 2 ? 'top2' : k]));
+  if (part.pole) meshes[0].position.set(part.pole[0], part.pole[1], part.pole[3] / 2);
+  for (const mesh of meshes) {
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+  }
+}
+// Linien am Boden: Start, Ziel (Schachmuster), Bahnränder, Slalomweg.
+const flat = (x0, x1, y0, y1, mat) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, y1 - y0), mat);
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0.002);
+  m.receiveShadow = true;
+  scene.add(m);
+};
+const ink = new THREE.MeshLambertMaterial({ color: token('--ink') });
+flat(START - 0.03, START + 0.03, -W, W, ink);
+for (const y of [-W, W]) flat(START, FINISH, y - 0.015, y + 0.015, ink);
+const fin = document.createElement('canvas');
+fin.width = 2; fin.height = 24;
+const fctx = fin.getContext('2d');
+for (let i = 0; i < 24; i++) for (let j = 0; j < 2; j++) { fctx.fillStyle = (i + j) % 2 ? token('--ink') : token('--surface'); fctx.fillRect(j, i, 1, 1); }
+const finTex = new THREE.CanvasTexture(fin);
+finTex.magFilter = THREE.NearestFilter;
+finTex.colorSpace = THREE.SRGBColorSpace;
+flat(FINISH, FINISH + 0.25, -W, W, new THREE.MeshLambertMaterial({ map: finTex }));
+// Slalomweg: gestrichelte Linie, die jede Stange auf der verlangten Seite umrundet.
+const path = [new THREE.Vector3(SLALOM[0].x - 1, 0, 0.004)];
+for (const p of SLALOM) path.push(new THREE.Vector3(p.x, p.side * 0.45, 0.004));
+path.push(new THREE.Vector3(SLALOM.at(-1).x + 1, 0, 0.004));
+const curve = new THREE.CatmullRomCurve3(path);
+const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(120)),
+  new THREE.LineDashedMaterial({ color: token('--ink-2'), dashSize: 0.12, gapSize: 0.08 }));
+line.computeLineDistances();
+scene.add(line);
+
+// ---- Kamera: Abschnitte anspringen, durchfliegen, WASD
+const STOPS = [{ name: 'Start', x0: START - 1, x1: START + 1 }, ...COURSE.legs, { name: 'Finish', x0: FINISH - 1, x1: FINISH + 1 }];
+const goal = { target: null, pos: null };
+function jump(i) {
+  const s = STOPS[i], cx = (s.x0 + s.x1) / 2, len = Math.max(2.5, s.x1 - s.x0);
+  goal.target = new THREE.Vector3(cx, 0, 0.1);
+  goal.pos = new THREE.Vector3(cx - len * 0.55, -len * 0.9 - 1.2, len * 0.45 + 0.6);
+  setFly(false);
+  for (const [k, b] of [...$legs.children].entries()) b.firstChild.classList.toggle('on', k === i);
+}
+const $legs = document.getElementById('legs');
+STOPS.forEach((s, i) => {
+  const li = document.createElement('li'), b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = `${i} ${s.name}`;
+  b.onclick = () => jump(i);
+  li.append(b);
+  $legs.append(li);
+});
+let flying = false, flyX = START - 1;
+const $fly = document.getElementById('fly');
+function setFly(on) {
+  flying = on;
+  $fly.setAttribute('aria-pressed', on);
+  if (on) { goal.target = goal.pos = null; flyX = Math.max(START - 1, Math.min(controls.target.x, FINISH)); if (flyX >= FINISH) flyX = START - 1; }
+}
+$fly.onclick = () => setFly(!flying);
+
+const held = new Set();
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (/^[0-7]$/.test(k)) jump(+k);
+  else if (k === ' ') { e.preventDefault(); setFly(!flying); }
+  else if ('wasdqe'.includes(k)) { held.add(k); goal.target = goal.pos = null; }
+});
+addEventListener('keyup', e => held.delete(e.key.toLowerCase()));
+addEventListener('blur', () => held.clear());
+controls.addEventListener('start', () => { goal.target = goal.pos = null; });
+
+camera.position.set(-3.5, -6, 3);
+controls.target.set(2, 0, 0);
+jump(0);
+
+new ResizeObserver(() => {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}).observe(document.body);
+
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), move = new THREE.Vector3();
+let last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (held.size) {
+    camera.getWorldDirection(fwd); fwd.z = 0; fwd.normalize();
+    right.set(fwd.y, -fwd.x, 0);
+    move.set(0, 0, 0);
+    if (held.has('w')) move.add(fwd); if (held.has('s')) move.sub(fwd);
+    if (held.has('d')) move.add(right); if (held.has('a')) move.sub(right);
+    if (held.has('e')) move.z += 1; if (held.has('q')) move.z -= 1;
+    move.multiplyScalar(3 * dt);
+    camera.position.add(move); controls.target.add(move);
+    if (camera.position.z < 0.05) { const lift = 0.05 - camera.position.z; camera.position.z += lift; controls.target.z += lift; }
+  }
+  if (flying) {
+    flyX += 1.6 * dt;
+    if (flyX > FINISH + 1) setFly(false);
+    goal.target = new THREE.Vector3(flyX + 1.5, 0, 0.15);
+    goal.pos = new THREE.Vector3(flyX - 1.2, -1.6, 0.9);
+  }
+  if (goal.target) {
+    const a = flying ? 0.12 : 0.08;
+    controls.target.lerp(goal.target, a); camera.position.lerp(goal.pos, a);
+    if (!flying && camera.position.distanceTo(goal.pos) < 0.01) goal.target = goal.pos = null;
+  }
+  controls.update();
+  sky.position.copy(camera.position);
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

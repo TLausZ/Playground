@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evolved Creatures Statistics</title>
+<style>
+  /* Tokens aus DESIGN.md, gleich wie in index.html. */
+  :root {
+    --surface: #FCFBF7;
+    --rule: #E3DFD3;
+    --ink: #26251F;
+    --ink-2: #5E5B52;
+    --node-0: #2a78d6;
+    --node-1: #eb6834;
+    --node-2: #1baf7a;
+    --node-3: #eda100;
+    --best: #6250d6;
+    --mean: #8f8c84;
+    --highlight: #e34948;
+    --bumps-top: #B79BFF; --bars-top: #FF77B4; --balls-top: #C9F25A; --balls-side: #FF77B4; --wedges-top: #5EE3E8; --staircase-top: #FF8A6B;
+    --coral-side: #E2614D;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--surface); color: var(--ink); font: 13px/1.45 system-ui, -apple-system, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  header a { color: var(--ink-2); }
+  header .btns { margin-left: auto; display: flex; gap: 6px; }
+  #live { color: var(--ink-2); font-size: 12px; }
+  /* «On air»: roter Punkt, der leise pulsiert, solange die Seite live mitliest. */
+  #live:not(:empty)::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; vertical-align: 1px;
+    background: var(--highlight); box-shadow: 0 0 6px var(--highlight); animation: onair 2s ease-in-out infinite; }
+  @keyframes onair { 50% { opacity: 0.45; box-shadow: 0 0 2px var(--highlight); } }
+  @media (prefers-reduced-motion: reduce) { #live::before { animation: none; } }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+  section { padding-top: 14px; border-top: 1px solid var(--rule); min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 32px; margin-top: 24px; }
+  .wide { grid-column: 1 / -1; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px 20px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  .tiles span { display: block; }
+  .k { color: var(--ink-2); font-size: 12px; }
+  .n { font: 24px var(--mono); }
+  .legend { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0 0 4px; font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 14px; height: 2px; margin-right: 5px; vertical-align: middle; background: var(--c); }
+  .legend i.dash { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+  .legend i.dot { width: 8px; height: 8px; border-radius: 50%; }
+  svg.chart { display: block; width: 100%; overflow: visible; }
+  svg.chart text { font: 11px var(--mono); fill: var(--ink-2); }
+  .multi { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 18px; }
+  .multi h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--ink); }
+  .multi h3 small { font-weight: 400; color: var(--ink-2); font-family: var(--mono); }
+  #tip { position: fixed; z-index: 9; pointer-events: none; padding: 6px 8px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface);
+    font: 12px/1.45 var(--mono); color: var(--ink); white-space: pre; display: none; }
+  #lane { position: relative; height: 36px; margin-top: 6px; border-radius: 3px; overflow: hidden; background: var(--rule); cursor: pointer; }
+  #lane div { position: absolute; top: 0; bottom: 0; border-right: 1px solid var(--surface); }
+  #lane div.sel { outline: 2px solid var(--ink); outline-offset: -2px; z-index: 1; }
+  #card { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: 16px; margin-top: 14px; }
+  #card h3 { margin: 0 0 6px; font-size: 18px; font-weight: 650; }
+  #card dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0; }
+  #card dt { color: var(--ink-2); }
+  #card dd { margin: 0; font-family: var(--mono); }
+  #geno text { font: 12px var(--mono); fill: var(--ink); text-anchor: middle; }
+  #champs { margin-top: 10px; max-height: 210px; overflow-y: auto; font: 12px var(--mono); border-top: 1px solid var(--rule); }
+  #champs table { width: 100%; border-collapse: collapse; }
+  #champs th { position: sticky; top: 0; background: var(--surface); text-align: right; font-weight: 400; color: var(--ink-2); padding: 4px 6px; }
+  #champs td { text-align: right; padding: 2px 6px; border-top: 1px solid var(--rule); }
+  #champs th:nth-child(2), #champs td:nth-child(2) { text-align: left; }
+  #champs tr { cursor: pointer; }
+  #champs tr.sel td { background: var(--rule); }
+  .btn { padding: 4px 10px; border: 1px solid var(--ink-2); border-radius: 4px; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+  .btn:hover { background: var(--ink); color: var(--surface); }
+  .btn:focus-visible, #lane:focus-visible, #champs tr:focus-visible { outline: 2px solid var(--best); outline-offset: 2px; }
+  .help { display: inline-block; width: 15px; height: 15px; margin-left: 5px; padding: 0; border: 1px solid var(--ink-2); border-radius: 50%; background: none; color: var(--ink-2);
+    font: 10px/13px system-ui, sans-serif; text-align: center; vertical-align: 1px; cursor: help; letter-spacing: 0; text-transform: none; }
+  .help:hover, .help:focus-visible { background: var(--ink); color: var(--surface); outline: none; }
+  #helpPop { margin: 0; max-width: 280px; padding: 12px; border: 1px solid var(--ink-2); border-radius: 4px; background: var(--surface); color: var(--ink-2); font-size: 12px; line-height: 1.4; }
+  #helpTitle { margin-bottom: 4px; color: var(--ink); font-weight: 600; }
+  #empty { margin-top: 40px; font-size: 15px; }
+  #runs { list-style: none; margin: 8px 0 0; padding: 0; font: 12px var(--mono); }
+  #runs li { display: flex; gap: 10px; align-items: center; padding: 2px 0; }
+  #runs i { width: 14px; height: 3px; background: var(--c); }
+  #runs button { margin-left: auto; padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; cursor: pointer; }
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    #card { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Statistics</h1>
+    <a href="index.html">back to the simulation</a>
+    <span id="live"></span>
+    <span class="btns">
+      <button id="export" class="btn" type="button">Export run</button>
+      <button id="load" class="btn" type="button">Compare runs</button>
+      <input id="loadfile" type="file" accept=".json,application/json" multiple hidden>
+    </span>
+  </header>
+
+  <p id="empty" hidden>No run in this browser yet. Open the <a href="index.html">simulation</a>, let it run for a few generations, then come back.</p>
+
+  <div id="report">
+    <div class="tiles" id="tiles"></div>
+
+    <div class="grid">
+      <section class="wide">
+        <h2 data-help="Best fitness of all islands and mean fitness, per generation. Dots mark a new champion, an island restart and a ghost kept for the race. Hover to read a generation, click to pick the champion of that moment.">Fitness</h2>
+        <p class="legend"><span><i style="--c: var(--best)"></i>best</span><span><i style="--c: var(--mean)"></i>mean over the islands</span>
+          <span><i class="dot" style="--c: var(--best)"></i>new champion</span><span><i class="dot" style="--c: var(--highlight)"></i>island restart</span><span><i class="dot" style="--c: var(--ink-2)"></i>ghost kept</span></p>
+        <div id="fitness"></div>
+      </section>
+
+      <section class="wide" id="coursesec" hidden>
+        <h2 data-help="The course seen from above, to scale, with where the last 3000 runs ended. Below, how many runs ended in each half metre. Grey: time was up or the creature stood still for 10 seconds. Red: the creature left the track or passed a slalom pole on the wrong side. Violet: it reached the finish. Hover to read a stretch.">Course</h2>
+        <p class="legend"><span><i class="dot" style="--c: var(--mean)"></i>time up or standing still</span><span><i class="dot" style="--c: var(--highlight)"></i>left the track or wrong side of a pole</span><span><i class="dot" style="--c: var(--best)"></i>finish</span></p>
+        <div id="course"></div>
+      </section>
+
+      <section class="wide">
+        <h2 data-help="Every creature that took the lead. In the band, each segment is one champion, as wide as it stayed in front, coloured by its island. Click a segment or a row, or use the arrow keys.">Champions</h2>
+        <p class="legend" id="lanelegend"></p>
+        <div id="lane" tabindex="0" role="listbox" aria-label="Champions over the generations, coloured by island"></div>
+        <div id="card">
+          <div>
+            <h3 id="cname"></h3>
+            <dl id="cfacts"></dl>
+          </div>
+          <svg id="geno" viewBox="0 0 288 152" role="img" aria-label="Genotype of the selected champion"></svg>
+        </div>
+        <div id="champs"></div>
+      </section>
+
+      <section>
+        <h2 data-help="Best fitness each island has reached. A drop to zero is a restart: the island had not improved for a while and began again with random creatures.">Islands</h2>
+        <div class="multi" id="islands"></div>
+      </section>
+
+      <section>
+        <h2>Body of the champion</h2>
+        <div class="multi" id="body"></div>
+      </section>
+
+      <section>
+        <h2 data-help="How strongly the champion's networks change the rhythm of its joints. 0 means the network is silent, 1 means its output is as large as the rhythm. A new network starts silent.">Network</h2>
+        <div id="net"></div>
+      </section>
+
+      <section>
+        <h2 data-help="Generations per minute while the simulation was running, smoothed over 25 generations. Pauses are left out.">Pace</h2>
+        <div id="pace"></div>
+      </section>
+
+      <section class="wide">
+        <h2 data-help="Best fitness of this run and of runs loaded with Compare runs, up to four. Export run saves this one as a file.">Compare runs</h2>
+        <p class="legend" id="cmplegend"></p>
+        <div id="compare"></div>
+        <ul id="runs"></ul>
+      </section>
+    </div>
+  </div>
+</main>
+<div id="tip"></div>
+<div id="helpPop" popover><div id="helpTitle"></div><div id="helpText"></div></div>
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const STORE = 'evolvedCreatures.v24';                       // derselbe Schlüssel wie in index.html
+const COLS = ['best', 'mean', 'metres', 'limbs', 'joints', 'types', 'net', 'island', 'ms'];
+const ISLAND_COLORS = ['--node-0', '--node-1', '--node-2', '--node-3', '--best', '--mean'];
+const RUN_COLORS = ['--best', '--node-0', '--node-1', '--node-2', '--node-3'];
+const fmt = (v, d = 2) => v == null || !Number.isFinite(v) ? '–' : v.toFixed(d);
+const per10 = (d, trial) => d * 10 / trial;
+let run = null, others = [], selected = null;
+
+//<course>
+// Parcours entlang +x, Start bei x = 0, Bahn von y = -3 bis 3, z oben, Meter. Reine Daten, kein DOM:
+// index.html baut daraus die MuJoCo-Geoms und die Anzeige, course.html nur die Anzeige. Der Block steht
+// in beiden Dateien gleich.
+// Teile: { box: [x0, x1, y0, y1, z0, z1] } wird ein Quader, { pole: [x, y, r, h] } ein Zylinder,
+// { ball: [x, y, r, Dichte, schwer] } eine lose Kugel, { tilt: [x0, x1, side, h] } ein seitlich geneigter Keil, { verts } allein ein Prisma mit Profil in x-z.
+// Keil und Prisma sind konvexe Körper (MuJoCo-Mesh). Jedes Teil hat verts.
+const COURSE = (() => {
+  const W = 3, GAP = 4, LEAD = 3;   // halbe Bahnbreite, freie Bahn zwischen Hindernissen, Anlauf und Auslauf
+  const LAP = 0.5;   // so weit reicht die Treppe über die Bahnmitte: wer genau geradeaus läuft, trifft Stufen, nicht die Naht zum Block
+  const boxVerts = ([x0, x1, y0, y1, z0, z1]) => [[x0, y0, z0], [x1, y0, z0], [x0, y1, z0], [x1, y1, z0], [x0, y0, z1], [x1, y0, z1], [x0, y1, z1], [x1, y1, z1]];
+  const box = (...b) => ({ box: b, verts: boxVerts(b) });
+  const prism = profile => ({ verts: profile.flatMap(([x, z]) => [[x, -W, z], [x, W, z]]) });   // Profil in x-z über die ganze Breite
+  const stairs = (x0, n, run, rise, y0, y1, down) => Array.from({ length: n }, (_, i) =>
+    box(x0 + i * run, x0 + (i + 1) * run, y0, y1, 0, (down ? n - i : i + 1) * rise));
+  const tilt = (x0, x1, side, h) => ({ tilt: [x0, x1, side, h], verts: [x0, x1].flatMap(x => [[x, -W, 0], [x, W, 0], [x, side * W, h]]) });   // side +1: links hoch
+  const ball = (x, y, r, density, heavy) => ({ ball: [x, y, r, density, heavy], verts: boxVerts([x - r, x + r, y - r, y + r, 0, 2 * r]) });
+  const pole = (x, y, r, h) => ({ pole: [x, y, r, h], verts: boxVerts([x - r, x + r, y - r, y + r, 0, h]) });
+  const slalom = [];   // Seite je Stange: +1 links (y > 0). Falsche Seite beendet den Lauf an dieser Stange.
+  // Masse in runden Zahlen: Stufen 5 cm hoch, Längen auf 10 cm. Mit LEAD und GAP ergibt das genau 50 m.
+  const OBSTACLES = [
+    // 1. Zwei flache Buckel über die ganze Breite, je 2 m lang und 15 cm hoch.
+    { name: 'Bumps', len: 4, build: x => [0, 2].map(d => prism([[x + d, 0], [x + d + 0.4, 0.1], [x + d + 1, 0.15], [x + d + 1.6, 0.1], [x + d + 2, 0]])) },
+    // 2. Zwei tiefe Leisten zum Überspringen, 10 cm hoch, 1 m auseinander. Massiv, sonst kriechen kleine Kreaturen darunter durch.
+    { name: 'Bars', len: 1.2, build: x => [0.1, 1.1].map(c => prism([[x + c - 0.1, 0], [x + c, 0.1], [x + c + 0.1, 0]])) },
+    // 3. 48 lose Kugeln als Band quer über die ganze Bahn, 4 m lang, in der Mitte der 6 m dieses Abschnitts:
+    //    zwölf Spalten im Abstand von 50 cm, je vier Kugeln im Abstand von 80 cm, im Zickzack versetzt. Radius 10, 15
+    //    oder 20 cm, leicht oder schwer: 0,4 und 3,8 kg, 1,3 und 13 kg, die grossen 60 und 240 kg. Aussen herum
+    //    geht es nicht.
+    { name: 'Balls', len: 6, build: x => Array.from({ length: 12 }, (_, c) => [0, 1, 2, 3].map(k => {
+      const r = [0.1, 0.15, 0.2][(c + k) % 3], heavy = (c + k) % 2;
+      return ball(x + 3 + (c % 2 ? -1 : -1.4) + k * 0.8, c * 0.5 - 2.75, r, r < 0.2 ? (heavy ? 900 : 90) : heavy ? 7200 : 1800, heavy);
+    })).flat() },
+    // 4. Links 6 Stufen à 20 cm und 5 cm hinauf auf 30 cm, Plattform 1,4 m, rechts 6 Stufen hinunter.
+    //    Beide Treppen reichen 50 cm über die Mitte, der Rest daneben ist Block mit Wand.
+    { name: 'Staircase', len: 3.8, build: x => [...stairs(x, 6, 0.2, 0.05, -LAP, W, false), box(x, x + 1.2, -W, -LAP, 0, 0.3),
+      box(x + 1.2, x + 2.6, -W, W, 0, 0.3), ...stairs(x + 2.6, 6, 0.2, 0.05, -W, LAP, true), box(x + 2.6, x + 3.8, LAP, W, 0, 0.3)] },
+    // 5. Vier Keile hintereinander, je 1 m lang, seitlich geneigt über die ganze Breite: abwechselnd links und
+    //    rechts 30 cm hoch, an der anderen Seite 0. In der Bahnmitte sind alle 15 cm hoch: dort eine Stufe am
+    //    Anfang und am Ende, dazwischen wechselt nur die Neigung.
+    { name: 'Wedges', len: 4, build: x => [0, 1, 2, 3].map(i => tilt(x + i, x + i + 1, i % 2 ? -1 : 1, 0.3)) },
+    // 6. Fünf Slalomstangen, 1,25 m auseinander, 2,5 cm Radius, 50 cm hoch.
+    { name: 'Slalom', len: 5, build: x0 => [0, 1, 2, 3, 4].map(i => {
+      slalom.push({ x: x0 + i * 1.25, side: i % 2 ? -1 : 1 });
+      return pole(x0 + i * 1.25, 0, 0.025, 0.5);
+    }) },
+  ];
+  let x = LEAD;
+  const legs = OBSTACLES.map(o => { const leg = { name: o.name, x0: x, x1: x + o.len, parts: o.build(x) }; x += o.len + GAP; return leg; });
+  return { W, legs, slalom, start: 0, finish: legs.at(-1).x1 + LEAD };   // 3 + 24 + 5 · 4 + 3 = 50 m
+})();
+//</course>
+
+// ---- Parcours von oben, massstäblich, mit den Endpunkten (wie in index.html), darunter ein Histogramm
+// pro halben Meter, gestapelt nach Art (0 Zeit um, 1 Abbruch, 2 Ziel).
+const END_COLORS = ['--mean', '--highlight', '--best'], BIN = 0.5;
+function drawCourse(host, ends) {
+  const W = Math.max(300, host.clientWidth), L = 34, R = 8, pw = W - L - R, K = pw / COURSE.finish, CW = COURSE.W;
+  const th = 2 * CW * K, HT = 8, hh = 120, H = HT + th + 14 + hh + 20;
+  const X = x => L + Math.min(Math.max(x, 0), COURSE.finish) * K, Y = y => HT + (CW - Math.min(Math.max(y, -CW), CW)) * K;
+  let svg = `<rect x="${X(0)}" y="${Y(CW)}" width="${pw}" height="${th}" fill="none" stroke="${css('--rule')}"/>`;
+  for (const l of COURSE.legs) {
+    const fill = css(l.name === 'Slalom' ? '--coral-side' : `--${l.name.toLowerCase()}-top`);   // Lauffläche, wie man sie von oben sieht
+    for (const p of l.parts) {
+      if (p.pole) { svg += `<circle cx="${X(p.pole[0])}" cy="${Y(p.pole[1])}" r="${Math.max(2, p.pole[2] * K)}" fill="${fill}"/>`; continue; }
+      if (p.ball) { svg += `<circle cx="${X(p.ball[0])}" cy="${Y(p.ball[1])}" r="${Math.max(2, p.ball[2] * K)}" fill="${css(p.ball[4] ? '--balls-side' : '--balls-top')}" fill-opacity="0.55"/>`; continue; }
+      const xs = p.verts.map(v => v[0]), ys = p.verts.map(v => v[1]), x0 = Math.min(...xs), y1 = Math.max(...ys);
+      svg += `<rect x="${X(x0)}" y="${Y(y1)}" width="${(Math.max(...xs) - x0) * K}" height="${(y1 - Math.min(...ys)) * K}" fill="${fill}" fill-opacity="0.55"/>`;
+    }
+  }
+  // Abbrüche und Ziel zuletzt, damit sie über den grauen Punkten liegen.
+  for (const k of [0, 1, 2]) svg += ends.filter(e => e[2] === k).map(([x, y]) => `<circle cx="${X(x).toFixed(1)}" cy="${Y(y).toFixed(1)}" r="2.5" fill="${css(END_COLORS[k])}" fill-opacity="${k ? 0.6 : 0.2}"/>`).join('');
+  // Histogramm
+  const nb = Math.ceil(COURSE.finish / BIN), bins = Array.from({ length: nb }, () => [0, 0, 0]);
+  for (const [x, , k] of ends) bins[Math.min(nb - 1, Math.max(0, Math.floor(x / BIN)))][k]++;
+  const top = Math.max(1, ...bins.map(b => b[0] + b[1] + b[2])), y0 = H - 20, bw = BIN * K, hy = v => v / top * hh;
+  svg += `<line x1="${L}" x2="${L + pw}" y1="${y0}" y2="${y0}" stroke="${css('--rule')}"/><text x="${L - 6}" y="${y0 - hh + 4}" text-anchor="end">${top}</text><text x="${L - 6}" y="${y0 + 4}" text-anchor="end">0</text>`;
+  bins.forEach((b, i) => {
+    let y = y0;
+    for (const k of [0, 1, 2]) if (b[k]) {
+      const h = hy(b[k]), last = k === 2 || !b.slice(k + 1).some(Boolean);
+      svg += `<rect x="${(L + i * bw + 1).toFixed(1)}" y="${(y - h).toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${Math.max(0, h - (last ? 0 : 2)).toFixed(1)}" rx="${last ? 2 : 0}" fill="${css(END_COLORS[k])}"/>`;
+      y -= h;
+    }
+  });
+  for (let m = 0; m <= COURSE.finish; m += 10) svg += `<text x="${X(m)}" y="${H - 4}" text-anchor="${m === COURSE.finish ? 'end' : m ? 'middle' : 'start'}">${m}${m === COURSE.finish ? ' m' : ''}</text>`;
+  svg += `<rect class="cross" y="${HT}" height="${y0 - HT}" width="${bw}" fill="${css('--ink')}" fill-opacity="0.08" visibility="hidden"/><rect x="${L}" y="0" width="${pw}" height="${H}" fill="transparent"/>`;
+  host.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Course from above with where runs ended, and a histogram of end points">${svg}</svg>`;
+  const el = host.firstChild, cross = el.querySelector('.cross'), tip = $('tip');
+  el.addEventListener('pointermove', e => {
+    const r = el.getBoundingClientRect(), i = Math.max(0, Math.min(nb - 1, Math.floor((e.clientX - r.left - L) / bw))), b = bins[i];
+    const leg = COURSE.legs.find(l => (i + 0.5) * BIN >= l.x0 && (i + 0.5) * BIN <= l.x1);
+    cross.setAttribute('x', L + i * bw); cross.setAttribute('visibility', 'visible');
+    tip.textContent = `${(i * BIN).toFixed(1)} to ${((i + 1) * BIN).toFixed(1)} m${leg ? ', ' + leg.name.toLowerCase() : ''}\n${b[0] + b[1] + b[2]} of ${ends.length} runs ended here\n  time/still ${b[0]}\n  out        ${b[1]}\n  finish     ${b[2]}`;
+    tip.style.display = 'block';
+    tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, e.clientX + 14) + 'px';
+    tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 10) + 'px';
+  });
+  el.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; });
+}
+
+// ---- Daten
+function readRun() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE));
+    if (!s || !Array.isArray(s.history)) return null;
+    return { name: 'this run', settings: s.settings ?? {}, ends: Array.isArray(s.ends) ? s.ends : [], history: s.history, events: s.events ?? [], generation: s.generation, startedAt: s.startedAt, reseeds: s.reseeds ?? 0 };
+  } catch (e) { return null; }
+}
+const col = (h, name) => h.map(r => r[COLS.indexOf(name)] ?? null);
+
+// ---- Diagramm: SVG, eine y-Achse, Fadenkreuz mit Tooltip. Mehr Punkte als Pixel werden pro Spalte
+// zusammengefasst (agg: max für Bestwerte, sonst Mittel), damit auch 50'000 Generationen passen.
+function chart(host, { n, series, height = 160, yMax, markers = [], label = v => fmt(v), step = false, onPick }) {
+  const W = Math.max(200, host.clientWidth), H = height, L = 34, R = 8, T = 10, B = 20, pw = W - L - R, ph = H - T - B;
+  const cols = Math.max(1, Math.min(n, Math.floor(pw)));
+  const top = yMax ?? Math.max(1e-9, ...series.flatMap(s => s.values.filter(Number.isFinite)));
+  const niceTop = top <= 1 ? Math.ceil(top * 10) / 10 : Math.ceil(top);
+  const X = i => L + (n > 1 ? i / (n - 1) : 0.5) * pw, Y = v => T + ph - v / niceTop * ph;
+  let svg = '';
+  for (const v of [0, niceTop / 2, niceTop]) {
+    svg += `<line x1="${L}" x2="${L + pw}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css('--rule')}"/>`
+      + `<text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${+v.toFixed(2)}</text>`;
+  }
+  svg += `<text x="${L}" y="${H - 4}">1</text><text x="${L + pw}" y="${H - 4}" text-anchor="end">${n}</text>`;
+  for (const s of series) {
+    let d = '';
+    for (let c = 0; c < cols; c++) {
+      const a = Math.floor(c * n / cols), b = Math.max(a + 1, Math.floor((c + 1) * n / cols));
+      const part = s.values.slice(a, b).filter(Number.isFinite);
+      if (!part.length) continue;
+      const v = s.agg === 'max' ? Math.max(...part) : part.reduce((x, y) => x + y, 0) / part.length;
+      const x = X(n > 1 ? (a + b - 1) / 2 : 0), y = Y(v);
+      d += d ? (step || s.step ? `H${x.toFixed(1)}V${y.toFixed(1)}` : `L${x.toFixed(1)} ${y.toFixed(1)}`) : `M${x.toFixed(1)} ${y.toFixed(1)}`;
+    }
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width ?? 2}" stroke-linejoin="round"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}/>`;
+  }
+  for (const m of markers) svg += `<circle cx="${X(m.i)}" cy="${m.y == null ? T - 4 : Y(m.y)}" r="${m.r ?? 3}" fill="${m.color}" stroke="${css('--surface')}" stroke-width="1.5"/>`;
+  svg += `<line class="cross" y1="${T}" y2="${T + ph}" stroke="${css('--ink')}" visibility="hidden"/><rect x="${L}" y="0" width="${pw}" height="${H}" fill="transparent"/>`;
+  host.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" height="${H}">${svg}</svg>`;
+  const el = host.firstChild, cross = el.querySelector('.cross'), tip = $('tip');
+  const at = e => { const r = el.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.round((e.clientX - r.left - L) / pw * (n - 1)))); };
+  el.addEventListener('pointermove', e => {
+    const i = at(e);
+    cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('visibility', 'visible');
+    tip.textContent = `generation ${i + 1}\n` + series.map(s => `${s.name.padEnd(10)} ${label(s.values[i])}`).join('\n')
+      + markers.filter(m => m.i === i && m.text).map(m => '\n' + m.text).join('');
+    tip.style.display = 'block';
+    tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, e.clientX + 14) + 'px';
+    tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 10) + 'px';
+  });
+  el.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; });
+  if (onPick) el.addEventListener('click', e => onPick(at(e)));
+}
+
+// ---- Genotyp, wie in index.html. Blass ist, was von der Wurzel aus nicht erreichbar ist.
+function drawGenotype(G) {
+  const reach = new Set([0]);
+  for (let grew = true; grew;) { grew = false; for (const i of [...reach]) for (const c of G.nodes[i].conns) if (!reach.has(c.to)) { reach.add(c.to); grew = true; } }
+  const y = 70, r = 15, x = i => 39 + i * 70, seen = {}, ink = css('--ink'), surface = css('--surface');
+  let out = `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 1 L10 5 L0 9 z" fill="${ink}"/></marker>`
+    + `<marker id="arrow-wide" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L10 5 L0 10 z" fill="${ink}"/></marker></defs>`;
+  G.nodes.forEach((node, i) => node.conns.forEach(conn => {
+    const j = conn.to, k = seen[i + '>' + j] = (seen[i + '>' + j] ?? -1) + 1;
+    let d;
+    if (i === j) d = `M${x(i) - 8} ${y - 13} C${x(i) - 24} ${y - 46 - k * 11} ${x(i) + 24} ${y - 46 - k * 11} ${x(i) + 9} ${y - 14}`;
+    else {
+      const s = i < j ? -1 : 1, bend = (10 + Math.abs(i - j) * 8 + k * 7) * 2;
+      d = `M${x(i) - s * 5} ${y + s * r} Q${(x(i) + x(j)) / 2} ${y + s * (r + bend)} ${x(j) + s * 5} ${y + s * (r + 1)}`;
+    }
+    const o = reach.has(i) ? 1 : 0.25, dash = conn.terminal ? ' stroke-dasharray="4 3"' : '';
+    out += conn.mirror
+      ? `<g fill="none" opacity="${o}"><path d="${d}" stroke="${ink}" stroke-width="4"${dash}/><path d="${d}" stroke="${surface}" stroke-width="1.5"/><path d="${d}" marker-end="url(#arrow-wide)"/></g>`
+      : `<path d="${d}" fill="none" stroke="${ink}" stroke-width="1.5" opacity="${o}"${dash} marker-end="url(#arrow)"/>`;
+  }));
+  G.nodes.forEach((node, i) => {
+    const o = reach.has(i) ? 1 : 0.25;
+    out += `<circle cx="${x(i)}" cy="${y}" r="${r}" fill="${css('--node-' + i)}" stroke="${surface}" stroke-width="2" opacity="${o}"/>`
+      + `<text x="${x(i)}" y="148" opacity="${o}">${i ? '' : 'root '}×${node.recur}</text>`;
+  });
+  $('geno').innerHTML = out;
+}
+
+// ---- Seite
+function render() {
+  run = readRun();
+  $('empty').hidden = !!run?.history.length;
+  $('report').hidden = !run?.history.length;
+  $('export').disabled = !run?.history.length;
+  if (!run?.history.length) return;
+  const h = run.history, n = h.length, trial = (run.settings.trial ?? 6) * (run.settings.course ? 10 : 1), islandsN = h.at(-1).length - COLS.length;
+  const champs = run.events.filter(e => e.type === 'champion');
+  const ms = col(h, 'ms');
+  // Generationen pro Minute, geglättet über 25 Generationen; ohne Messung (alte Läufe) leer.
+  const pace = ms.map((_, i) => {
+    const part = ms.slice(Math.max(0, i - 24), i + 1).filter(v => Number.isFinite(v) && v > 0);
+    return part.length ? 60000 / (part.reduce((a, b) => a + b, 0) / part.length) : null;
+  });
+  const minutes = ms.filter(Number.isFinite).reduce((a, b) => a + b, 0) / 60000;
+  const last = h.at(-1);
+
+  $('tiles').innerHTML = [
+    ['generations', n.toLocaleString('de-CH')],
+    ['best fitness', fmt(last[0])],
+    ['champion, m/10s', last[2] != null ? fmt(per10(last[2], trial)) : '–'],
+    ['champions so far', champs.length || '–'],
+    ['island restarts', run.reseeds],
+    ['running time', minutes ? (minutes < 1 ? 'under 1 min' : minutes < 90 ? Math.round(minutes) + ' min' : (minutes / 60).toFixed(1) + ' h') : '–'],
+  ].map(([k, v]) => `<div><span class="k">${k}</span><span class="n">${v}</span></div>`).join('');
+
+  // Fitness mit Ereignissen
+  const champAt = i => { let c = null; for (const e of champs) if (e.gen <= i + 1) c = e; return c; };
+  const markers = [
+    ...champs.map(e => ({ i: e.gen - 1, y: e.fit, color: css('--best'), text: `new champion ${e.name}` })),
+    ...run.events.filter(e => e.type === 'reseed').map(e => ({ i: e.gen - 1, color: css('--highlight'), r: 2.5, text: `island ${e.island + 1} restarted` })),
+    ...run.events.filter(e => e.type === 'ghost').map(e => ({ i: e.gen - 1, color: css('--ink-2'), r: 2.5, text: `ghost kept: ${e.name}` })),
+  ];
+  chart($('fitness'), {
+    n, height: 240, markers, onPick: i => select(champs.indexOf(champAt(i))),
+    series: [{ name: 'best', values: col(h, 'best'), color: css('--best'), agg: 'max', step: true }, { name: 'mean', values: col(h, 'mean'), color: css('--mean'), width: 1.5 }],
+  });
+
+  $('coursesec').hidden = !run.ends.length;
+  if (run.ends.length) drawCourse($('course'), run.ends.filter(e => Array.isArray(e) && e.length === 3 && e.every(Number.isFinite)));
+
+  // Champion-Band: ein Abschnitt pro Champion, Breite = wie lange er vorn lag, Farbe = Insel
+  const lane = $('lane');
+  lane.innerHTML = champs.map((e, k) => {
+    const from = e.gen - 1, to = (champs[k + 1]?.gen ?? n + 1) - 1;
+    return `<div data-k="${k}" title="${e.name}, fitness ${fmt(e.fit)}" style="left:${from / n * 100}%;width:${Math.max(0.2, (to - from) / n * 100)}%;background:${css(ISLAND_COLORS[e.island % ISLAND_COLORS.length])}"></div>`;
+  }).join('');
+  $('lanelegend').innerHTML = Array.from({ length: islandsN }, (_, i) => `<span><i class="dot" style="--c: var(${ISLAND_COLORS[i % ISLAND_COLORS.length]})"></i>island ${i + 1}</span>`).join('');
+  $('champs').innerHTML = `<table><thead><tr><th>gen</th><th>name</th><th>island</th><th>fitness</th><th>m/10s</th><th>limbs</th><th>network</th></tr></thead><tbody>`
+    + champs.map((e, k) => `<tr data-k="${k}" tabindex="0"><td>${e.gen}</td><td></td><td>${e.island + 1}</td><td>${fmt(e.fit)}</td><td>${fmt(per10(e.dist ?? 0, trial))}</td><td>${e.limbs ?? '–'}</td><td>${fmt(e.net)}</td></tr>`).reverse().join('')
+    + '</tbody></table>';
+  $('champs').querySelectorAll('tr[data-k]').forEach(tr => { tr.children[1].textContent = champs[+tr.dataset.k].name; });
+  select(selected != null && selected < champs.length ? selected : champs.length - 1);
+
+  // Inseln als kleine Vielfache
+  $('islands').innerHTML = Array.from({ length: islandsN }, (_, i) => `<div><h3>island ${i + 1} <small>${fmt(last[COLS.length + i])}</small></h3><div></div></div>`).join('');
+  [...$('islands').children].forEach((d, i) => chart(d.lastChild, {
+    n, height: 90, yMax: Math.max(...col(h, 'best').filter(Number.isFinite)),
+    series: [{ name: `island ${i + 1}`, values: h.map(r => r[COLS.length + i] ?? null), color: css(ISLAND_COLORS[i % ISLAND_COLORS.length]), agg: 'max', step: true }],
+  }));
+
+  // Körper
+  const body = [['limbs', 'limbs'], ['joints', 'joints'], ['types', 'limb types']];
+  $('body').innerHTML = body.map(([, t]) => `<div><h3>${t}</h3><div></div></div>`).join('');
+  [...$('body').children].forEach((d, i) => chart(d.lastChild, {
+    n, height: 90, step: true, label: v => v == null ? '–' : String(Math.round(v)),
+    series: [{ name: body[i][1], values: col(h, body[i][0]), color: css('--ink'), width: 1.5 }],
+  }));
+
+  chart($('net'), { n, height: 140, series: [{ name: 'network', values: col(h, 'net'), color: css('--ink'), width: 1.5, step: true }] });
+  chart($('pace'), { n, height: 140, label: v => v == null ? '–' : Math.round(v) + ' gen/min', series: [{ name: 'pace', values: pace, color: css('--ink'), width: 1.5 }] });
+
+  // Vergleich: diese und geladene Läufe, beste Fitness. Die x-Achse ist so lang wie der längste.
+  const all = [run, ...others], N = Math.max(...all.map(r => r.history.length));
+  chart($('compare'), {
+    n: N, height: 220,
+    series: all.map((r, k) => ({ name: r.name.slice(0, 10), values: Array.from({ length: N }, (_, i) => r.history[i]?.[0] ?? null), color: css(RUN_COLORS[k % RUN_COLORS.length]), agg: 'max', step: true })),
+  });
+  $('cmplegend').innerHTML = all.map((r, k) => `<span><i style="--c: var(${RUN_COLORS[k % RUN_COLORS.length]})"></i></span>`).join('');
+  [...$('cmplegend').children].forEach((s, k) => s.append(all[k].name + (all[k].settings?.net === false ? ' (no network)' : '')));
+  $('runs').replaceChildren(...others.map((r, k) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<i style="--c: var(${RUN_COLORS[(k + 1) % RUN_COLORS.length]})"></i><span></span><button type="button">remove</button>`;
+    li.children[1].textContent = `${r.name}: ${r.history.length} generations, best ${fmt(Math.max(...r.history.map(x => x[0])))}`;
+    li.lastChild.addEventListener('click', () => { others.splice(k, 1); render(); });
+    return li;
+  }));
+  $('live').textContent = 'live';
+  $('live').title = 'Updates while the simulation runs in another tab';
+}
+
+function select(k) {
+  const champs = run.events.filter(e => e.type === 'champion');
+  const e = champs[k];
+  if (!e) { $('cname').textContent = 'No champion recorded'; $('cfacts').innerHTML = ''; $('geno').innerHTML = ''; return; }
+  selected = k;
+  const trial = (run.settings.trial ?? 6) * (run.settings.course ? 10 : 1), next = champs[k + 1];
+  $('cname').textContent = e.name;
+  $('cfacts').innerHTML = [
+    ['took the lead', `generation ${e.gen}, island ${e.island + 1}`],
+    ['stayed in front', (g => `${g} generation${g === 1 ? '' : 's'}`)((next?.gen ?? run.history.length + 1) - e.gen) + (next ? '' : ', so far')],
+    ['fitness', fmt(e.fit)], ['m/10s', fmt(per10(e.dist ?? 0, trial))],
+    ['body', `${e.limbs} limbs, ${e.joints} joints, ${e.types} limb types`],
+    ['network share', fmt(e.net)],
+  ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+  if (e.g) drawGenotype(e.g);
+  $('lane').querySelectorAll('div').forEach(d => d.classList.toggle('sel', +d.dataset.k === k));
+  $('champs').querySelectorAll('tr[data-k]').forEach(tr => tr.classList.toggle('sel', +tr.dataset.k === k));
+}
+$('lane').addEventListener('click', e => { const d = e.target.closest('[data-k]'); if (d) select(+d.dataset.k); });
+$('lane').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const total = run.events.filter(x => x.type === 'champion').length;
+  select(Math.max(0, Math.min(total - 1, selected + (e.key === 'ArrowRight' ? 1 : -1))));
+});
+$('champs').addEventListener('click', e => { const tr = e.target.closest('tr[data-k]'); if (tr) select(+tr.dataset.k); });
+$('champs').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-k]'); if (tr && e.key === 'Enter') select(+tr.dataset.k); });
+
+// ---- Export und Vergleich
+$('export').addEventListener('click', () => {
+  const r = readRun();
+  if (!r) return;
+  const data = { format: 'evolvedCreaturesRun', version: 1, exportedAt: new Date().toISOString(), startedAt: r.startedAt, settings: r.settings,
+    columns: COLS, generation: r.generation, reseeds: r.reseeds, history: r.history, events: r.events };
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' })),
+    download: `Evolved Creatures run ${new Date().toISOString().slice(0, 10)}.json` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('load').addEventListener('click', () => $('loadfile').click());
+// Geladene Dateien sind fremde Eingabe: nur Zahlenreihen übernehmen, Namen nur als Text zeigen.
+$('loadfile').addEventListener('change', async e => {
+  for (const file of e.target.files) {
+    try {
+      const d = JSON.parse(await file.text());
+      if (d?.format !== 'evolvedCreaturesRun' || !Array.isArray(d.history)) continue;
+      const history = d.history.slice(0, 200000).filter(r => Array.isArray(r) && r.every(v => typeof v === 'number' && Number.isFinite(v)));
+      if (history.length) others.push({ name: file.name.replace(/\.json$/i, '').slice(0, 40), history, settings: { net: d.settings?.net !== false && d.settings?.net !== 0 } });
+    } catch (err) { /* keine gültige Datei: übergehen */ }
+  }
+  e.target.value = '';
+  others = others.slice(-4);
+  render();
+});
+
+// Live: die Simulation schreibt nach jeder Generation, andere Tabs bekommen dann ein storage-Ereignis.
+// Höchstens alle 2 s neu zeichnen.
+let pending = 0;
+addEventListener('storage', e => { if (e.key === STORE && !pending) pending = setTimeout(() => { pending = 0; render(); }, 2000); });
+// Nur auf Breitenänderungen reagieren; render ändert die Höhe und löste sonst sich selbst aus.
+let lastWidth = 0;
+new ResizeObserver(([e]) => {
+  const w = Math.round(e.contentRect.width);
+  if (w !== lastWidth) { lastWidth = w; if (run) render(); }
+}).observe(document.querySelector('main'));
+// Fragezeichen an den Überschriften, nach dem Muster in index.html.
+for (const h of document.querySelectorAll('h2[data-help]')) {
+  const b = Object.assign(document.createElement('button'), { type: 'button', className: 'help', textContent: '?' });
+  b.setAttribute('aria-label', 'About ' + h.textContent);
+  const show = () => {
+    const pop = $('helpPop');
+    $('helpTitle').textContent = h.firstChild.textContent;
+    $('helpText').textContent = h.dataset.help;
+    pop.showPopover();
+    const r = b.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(innerWidth - pr.width - 8, r.right + 8)) + 'px';
+    pop.style.top = Math.max(8, Math.min(innerHeight - pr.height - 8, r.top - 8)) + 'px';
+  };
+  const hide = () => { if ($('helpPop').matches(':popover-open')) $('helpPop').hidePopover(); };
+  b.addEventListener('mouseenter', show); b.addEventListener('focus', show);
+  b.addEventListener('mouseleave', hide); b.addEventListener('blur', hide);
+  h.append(b);
+}
+render();
+</script>
+</body>
+</html>

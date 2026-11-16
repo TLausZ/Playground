@@ -64,7 +64,7 @@ const CACHE = path.join(HERE, '.cache', 'mujoco-node');   // night_run.mjs lädt
 const loadMujoco = (await import(pathToFileURL(path.join(CACHE, 'mujoco.js')).href)).default;
 const mujoco = await loadMujoco({ wasmBinary: readFileSync(path.join(CACHE, 'mujoco.wasm')) });
 const core = '//' + readFileSync(path.join(ROOT, 'index.html'), 'utf8').split('//<core>')[1].split('//</core>')[0];
-const A = new Function('mujoco', 'SETTINGS_RAW', core + '; return { evaluate, hatch, advance, free, importGenome, nameOf, N, DT };')(mujoco, { course: 0, hip: 1, wave: 1 });
+const A = new Function('mujoco', 'SETTINGS_RAW', core + '; return { evaluate, hatch, advance, free, importGenome, nameOf, N, DT };')(mujoco, { course: 0, jump: 0, hip: 1, wave: 1 });
 
 const rnd = n => Math.floor(Math.random() * n), pick = a => a[rnd(a.length)];
 const clamp01 = v => Math.min(1, Math.max(0, v));

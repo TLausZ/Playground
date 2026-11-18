@@ -2,7 +2,8 @@
 """Übernimmt die trainierten Vorlagen aus presets/<key>.js in den Kern von index.html.
 
 Schreibt die Zeilen zwischen //<presets> und //</presets> neu: pro Vorlage das beste Genom, am Start
-in Laufrichtung gedreht (yaw), und seine Strecke in 6 s auf freier Fläche. Aufruf nach scripts/train_presets.mjs:
+in Laufrichtung gedreht (yaw), und seine Strecke in 6 s auf freier Fläche. Wer auf dem Parcours trainiert hat
+(EVAL in train_presets.mjs), bringt diese Strecke als «flat» mit; sein heading ist dort immer 0. Aufruf nach scripts/train_presets.mjs:
 
     python3 scripts/embed_presets.py && python3 scripts/build_offline.py
 """
@@ -17,7 +18,7 @@ for key in KEYS:
     d = json.loads(text[len('PRESET('):-1])
     g = d['genome']   # ungerundet: schon vier Stellen ändern den Gang (Vierfüssler 3,6 statt 10,5 m)
     g['yaw'] = round(-d['heading'], 4)   # am Start so gedreht, dass der trainierte Gang nach +x führt
-    lines.append('  ' + json.dumps({'g': g, 'dist': d['dist']}, separators=(',', ':')) + ',')
+    lines.append('  ' + json.dumps({'g': g, 'dist': d.get('flat') or d['dist']}, separators=(',', ':')) + ',')
     print(f"{key}: {d['name']}, {d['dist']} m, {d['rounds']} rounds")
 
 page = ROOT / 'index.html'
